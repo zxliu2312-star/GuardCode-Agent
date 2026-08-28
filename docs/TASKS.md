@@ -3,21 +3,21 @@
 ## Phase 1：核心闭环（2-3 天）
 
 ### 1.1 项目初始化
-- [ ] 创建项目目录结构
-- [ ] 初始化 Git 仓库
-- [ ] 创建 `requirements.txt`
+- [x] 创建项目目录结构
+- [x] 初始化 Git 仓库
+- [x] 创建 `requirements.txt`
   - `openai>=1.0.0`
   - `rich>=13.0.0`
-- [ ] 创建 `.gitignore`
-- [ ] 创建 `README.md` 基础框架
+- [x] 创建 `.gitignore`
+- [x] 创建 `README.md` 基础框架
 
 ### 1.2 配置系统
-- [ ] 实现 `config.py`
-  - [ ] 定义配置数据结构（dataclass 或 dict）
-  - [ ] 实现配置文件加载（JSON）
-  - [ ] 支持环境变量覆盖
-  - [ ] 提供默认配置
-- [ ] 创建示例配置文件 `.guardcode.json`
+- [x] 实现 `config.py`
+  - [x] 定义配置数据结构（dataclass 或 dict）
+  - [x] 实现配置文件加载（JSON）
+  - [x] 支持环境变量覆盖
+  - [x] 提供默认配置
+- [x] 创建示例配置文件 `.guardcode.json`
 
 ### 1.3 工作区管理
 - [ ] 实现工作区初始化逻辑

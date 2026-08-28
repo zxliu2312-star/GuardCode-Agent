@@ -1,0 +1,23 @@
+{
+  "api_base": "https://api.openai.com/v1",
+  "model": "gpt-4-turbo",
+  "max_iterations": 10,
+  "security": {
+    "always_block": [
+      "rm -rf /",
+      "format c:",
+      "dd if=/dev/zero"
+    ],
+    "auto_approve": [
+      "ls",
+      "pwd",
+      "cat",
+      "echo"
+    ]
+  },
+  "context": {
+    "max_context_size": 100000,
+    "keep_recent_messages": 5
+  },
+  "verbose": false
+}
