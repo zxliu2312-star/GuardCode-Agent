@@ -1,0 +1,29 @@
+# Superpowers plugin (development tool, not part of project)
+superpowers/
+
+# IDE settings
+.cursor/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment and secrets
+.env
+.env.local
+*.key
+
+# GuardCode user config (may contain preferences, not secrets but user-specific)
+.guardcode.json
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
