@@ -59,8 +59,8 @@
     - [x] 返回统一格式
 
 ### 1.6 命令执行工具
-- [ ] 实现 `tools/command_tools.py`
-  - [ ] `run_command(command: str, timeout: int = 30) -> dict`
+- [x] 实现 `tools/command_tools.py`
+  - [x] `run_command(command: str, timeout: int = 30) -> dict`
     - [ ] 使用 `subprocess.run()`
     - [ ] 设置 `cwd=workspace`
     - [ ] 设置 `shell=True`
