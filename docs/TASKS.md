@@ -61,20 +61,19 @@
 ### 1.6 命令执行工具
 - [x] 实现 `tools/command_tools.py`
   - [x] `run_command(command: str, timeout: int = 30) -> dict`
-    - [ ] 使用 `subprocess.run()`
-    - [ ] 设置 `cwd=workspace`
-    - [ ] 设置 `shell=True`
-    - [ ] 捕获 stdout 和 stderr
-    - [ ] 处理超时异常
-    - [ ] 返回统一格式（包含 exit_code）
+    - [x] 设置 `cwd=workspace`
+    - [x] 设置 `shell=True`
+    - [x] 捕获 stdout 和 stderr
+    - [x] 处理超时异常
+    - [x] 返回统一格式（包含 exit_code）
 
 ### 1.7 模型 API 集成
-- [ ] 实现模型调用函数（在 `agent.py` 或单独模块）
-  - [ ] 从环境变量读取 `OPENAI_API_KEY`
-  - [ ] 配置 `openai.api_base`（支持兼容端点）
-  - [ ] 实现 `call_model(messages: list) -> response`
-  - [ ] 解析响应中的 `tool_calls`
-  - [ ] 处理异常（网络错误、API 错误）
+- [x] 实现模型调用函数（在 `agent.py` 或单独模块）
+  - [x] 从环境变量读取 `OPENAI_API_KEY`
+  - [x] 配置 `openai.api_base`（支持兼容端点）
+  - [x] 实现 `call_model(messages: list) -> response`
+  - [x] 解析响应中的 `tool_calls`
+  - [x] 处理异常（网络错误、API 错误）
 
 ### 1.8 Agent 核心循环
 - [ ] 实现 `agent.py` 的 `run_agent_loop()`
