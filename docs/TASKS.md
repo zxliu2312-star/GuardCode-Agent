@@ -31,32 +31,32 @@
   - [x] 返回规范化的 Path 对象
 
 ### 1.4 工具系统基础设施
-- [ ] 实现 `tools/base.py`
-  - [ ] 定义工具注册装饰器 `@register_tool`
-  - [ ] 实现工具注册表（dict）
-  - [ ] 实现 `generate_tool_schema()` 自动生成 OpenAI schema
-  - [ ] 实现 `get_tool_schemas()` 返回所有工具的 schema
-  - [ ] 实现 `execute_tool(name, args)` 调用对应工具函数
+- [x] 实现 `tools/base.py`
+  - [x] 定义工具注册装饰器 `@register_tool`
+  - [x] 实现工具注册表（dict）
+  - [x] 实现 `generate_tool_schema()` 自动生成 OpenAI schema
+  - [x] 实现 `get_tool_schemas()` 返回所有工具的 schema
+  - [x] 实现 `execute_tool(name, args)` 调用对应工具函数
 
 ### 1.5 文件操作工具
-- [ ] 实现 `tools/file_tools.py`
-  - [ ] `read_file(path: str) -> dict`
-    - [ ] 路径校验
-    - [ ] 读取文件内容
-    - [ ] 返回统一格式 `{"success": bool, "result": str, "error": str}`
-  - [ ] `write_file(path: str, content: str) -> dict`
-    - [ ] 路径校验
-    - [ ] 创建父目录（如果不存在）
-    - [ ] 写入文件
-    - [ ] 返回统一格式
-  - [ ] `list_files(directory: str = ".") -> dict`
-    - [ ] 路径校验
-    - [ ] 列出文件和目录
-    - [ ] 返回相对路径列表
-  - [ ] `delete_file(path: str) -> dict`
-    - [ ] 路径校验
-    - [ ] 删除文件
-    - [ ] 返回统一格式
+- [x] 实现 `tools/file_tools.py`
+  - [x] `read_file(path: str) -> dict`
+    - [x] 路径校验
+    - [x] 读取文件内容
+    - [x] 返回统一格式 `{"success": bool, "result": str, "error": str}`
+  - [x] `write_file(path: str, content: str) -> dict`
+    - [x] 路径校验
+    - [x] 创建父目录（如果不存在）
+    - [x] 写入文件
+    - [x] 返回统一格式
+  - [x] `list_files(directory: str = ".") -> dict`
+    - [x] 路径校验
+    - [x] 列出文件和目录
+    - [x] 返回相对路径列表
+  - [x] `delete_file(path: str) -> dict`
+    - [x] 路径校验
+    - [x] 删除文件
+    - [x] 返回统一格式
 
 ### 1.6 命令执行工具
 - [ ] 实现 `tools/command_tools.py`
