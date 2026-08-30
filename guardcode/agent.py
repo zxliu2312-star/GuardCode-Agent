@@ -252,8 +252,8 @@ def main():
     """命令行入口。
 
     用法:
-        python -m guardcode.agent "你的编程任务"
-        python -m guardcode.agent "写一个冒泡排序" --workspace ./myproject
+        python -m guardcode "你的编程任务"
+        python -m guardcode "写一个冒泡排序" --workspace ./myproject --model gpt-4-turbo
     """
     import argparse
 
@@ -261,9 +261,13 @@ def main():
     parser.add_argument("task", help="Programming task for the agent")
     parser.add_argument("--workspace", default=".", help="Workspace directory")
     parser.add_argument("--max-iterations", type=int, default=50, help="Max loop iterations")
+    parser.add_argument("--model", default=None, help="Model name override (default: from config)")
+    parser.add_argument("--config", default=None, help="Path to config file")
     args = parser.parse_args()
 
-    config = load_config(workspace=args.workspace)
+    config = load_config(config_file=args.config, workspace=args.workspace)
+    if args.model:
+        config.model = args.model
     result = run_agent_loop(args.task, config=config, max_iterations=args.max_iterations)
     print(result)
 

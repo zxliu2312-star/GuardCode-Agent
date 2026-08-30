@@ -76,32 +76,32 @@
   - [x] 处理异常（网络错误、API 错误）
 
 ### 1.8 Agent 核心循环
-- [ ] 实现 `agent.py` 的 `run_agent_loop()`
-  - [ ] 初始化消息列表（system prompt + user task）
-  - [ ] 实现主循环（最多 `max_iterations` 次）
-  - [ ] 调用模型
-  - [ ] 检查是否有 `tool_calls`
-  - [ ] 如果没有工具调用，返回最终响应
-  - [ ] 如果有工具调用，依次执行
-  - [ ] 将工具结果添加到消息历史
-  - [ ] 继续下一轮循环
-- [ ] 编写基础 System Prompt
-  - [ ] 描述 Agent 角色
-  - [ ] 列出可用工具
-  - [ ] 说明工作区限制
+- [x] 实现 `agent.py` 的 `run_agent_loop()`
+  - [x] 初始化消息列表（system prompt + user task）
+  - [x] 实现主循环（最多 `max_iterations` 次）
+  - [x] 调用模型
+  - [x] 检查是否有 `tool_calls`
+  - [x] 如果没有工具调用，返回最终响应
+  - [x] 如果有工具调用，依次执行
+  - [x] 将工具结果添加到消息历史
+  - [x] 继续下一轮循环
+- [x] 编写基础 System Prompt
+  - [x] 描述 Agent 角色
+  - [x] 列出可用工具
+  - [x] 说明工作区限制
 
 ### 1.9 CLI 入口
-- [ ] 实现 `__main__.py`
-  - [ ] 使用 `argparse` 解析命令行参数
-    - [ ] `task`（位置参数，必需）
-    - [ ] `--workspace`（默认：当前目录）
-    - [ ] `--max-iterations`（默认：5）
-    - [ ] `--model`（默认：gpt-4-turbo）
-    - [ ] `--config`（配置文件路径）
-  - [ ] 加载配置
-  - [ ] 初始化工作区
-  - [ ] 调用 `run_agent_loop()`
-  - [ ] 打印最终结果
+- [x] 实现 `__main__.py`
+  - [x] 使用 `argparse` 解析命令行参数
+    - [x] `task`（位置参数，必需）
+    - [x] `--workspace`（默认：当前目录）
+    - [x] `--max-iterations`（默认：50）
+    - [x] `--model`（默认：从配置读取）
+    - [x] `--config`（配置文件路径）
+  - [x] 加载配置
+  - [x] 初始化工作区
+  - [x] 调用 `run_agent_loop()`
+  - [x] 打印最终结果
 
 ### 1.10 基础输出
 - [ ] 实现简单的打印输出
