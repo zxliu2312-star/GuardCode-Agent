@@ -135,11 +135,11 @@
   - [x] 默认返回 DANGEROUS（保守策略）
 
 ### 2.3 用户确认流程
-- [ ] 实现 `confirm_operation(tool_name: str, args: dict) -> bool`
-  - [ ] 打印警告信息
-  - [ ] 格式化显示工具名和参数
-  - [ ] 提示用户输入 y/n
-  - [ ] 返回布尔值
+- [x] 实现 `confirm_operation(tool_name: str, args: dict) -> bool`
+  - [x] 打印警告信息
+  - [x] 格式化显示工具名和参数
+  - [x] 提示用户输入 y/n
+  - [x] 返回布尔值
 
 ### 2.4 集成风险判定到工具执行
 - [ ] 修改 `execute_tool()` 函数
