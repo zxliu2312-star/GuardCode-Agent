@@ -8,6 +8,9 @@ import inspect
 from typing import Dict, Any, Callable, List, Optional
 from functools import wraps
 
+# 安全模块（延迟导入避免循环依赖）
+from ..security import classify_risk, confirm_operation, format_blocked_message, RiskLevel
+
 
 # 全局工具注册表
 _tool_registry: Dict[str, Dict[str, Any]] = {}
@@ -162,36 +165,82 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
     return [generate_tool_schema(name) for name in _tool_registry.keys()]
 
 
-def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_security_config(config: Any) -> Dict[str, Any]:
+    """将 Config 对象或 dict 转换为 classify_risk 需要的格式。"""
+    if isinstance(config, dict):
+        return config
+
+    # Config 对象
+    if hasattr(config, "security"):
+        security = config.security
+        return {
+            "security": {
+                "always_block": getattr(security, "always_block", []),
+                "auto_approve": getattr(security, "auto_approve", []),
+            }
+        }
+
+    return {}
+
+
+def execute_tool(
+    name: str,
+    args: Dict[str, Any],
+    config: Any = None,
+) -> Dict[str, Any]:
     """
     执行指定的工具
-    
+
+    如果传入 config，会在执行前进行风险分级：
+    - BLOCKED：直接拒绝，返回错误
+    - DANGEROUS：调用 confirm_operation 等待用户确认
+    - SAFE：直接执行
+
     Args:
         name: 工具名称
         args: 工具参数
-        
+        config: 配置对象（Config 或 dict），可选
+
     Returns:
         工具执行结果（统一格式：{"success": bool, "result": Any, "error": str}）
-        
-    Raises:
-        KeyError: 如果工具未注册
     """
     if name not in _tool_registry:
         return {
             "success": False,
             "result": None,
-            "error": f"Tool '{name}' not found"
+            "error": f"Tool '{name}' not found",
         }
-    
+
+    # 风险分级（传入 config 时才检查）
+    if config is not None:
+        security_config = _extract_security_config(config)
+        risk_level = classify_risk(name, args, security_config)
+
+        if risk_level == RiskLevel.BLOCKED:
+            print(format_blocked_message(name, args))
+            return {
+                "success": False,
+                "result": None,
+                "error": "Operation blocked by security policy",
+            }
+
+        if risk_level == RiskLevel.DANGEROUS:
+            if not confirm_operation(name, args):
+                return {
+                    "success": False,
+                    "result": None,
+                    "error": "Operation rejected by user",
+                }
+
     tool_func = _tool_registry[name]["function"]
-    
+
     try:
         result = tool_func(**args)
-        
+
         # 如果工具返回的已经是标准格式，直接返回
         if isinstance(result, dict) and "success" in result:
             return result
-        
+
         # 否则包装成标准格式
         return {
             "success": True,

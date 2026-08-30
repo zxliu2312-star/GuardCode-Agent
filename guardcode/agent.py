@@ -229,7 +229,7 @@ def run_agent_loop(
             _log_to_file(f"[Iteration {iteration}] Tool: {tool_name}({tool_args})", config)
 
             # TODO (Phase 2): 在这里加 classify_risk 判定
-            result = execute_tool(tool_name, tool_args)
+            result = execute_tool(tool_name, tool_args, config=config)
 
             _print_tool_result(result)
             _print_verbose(

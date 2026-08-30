@@ -142,12 +142,12 @@
   - [x] 返回布尔值
 
 ### 2.4 集成风险判定到工具执行
-- [ ] 修改 `execute_tool()` 函数
-  - [ ] 执行前调用 `classify_risk()`
-  - [ ] 如果是 BLOCKED，返回错误
-  - [ ] 如果是 DANGEROUS，调用 `confirm_operation()`
-  - [ ] 如果用户拒绝，返回错误或跳过
-  - [ ] 如果是 SAFE，直接执行
+- [x] 修改 `execute_tool()` 函数
+  - [x] 执行前调用 `classify_risk()`
+  - [x] 如果是 BLOCKED，返回错误
+  - [x] 如果是 DANGEROUS，调用 `confirm_operation()`
+  - [x] 如果用户拒绝，返回错误或跳过
+  - [x] 如果是 SAFE，直接执行
 
 ### 2.5 代码静态扫描
 - [ ] 实现 `security/code_scanner.py`
