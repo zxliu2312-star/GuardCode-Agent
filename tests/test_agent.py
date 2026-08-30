@@ -1,0 +1,373 @@
+"""
+测试 Agent 核心循环
+"""
+
+import json
+from unittest.mock import Mock, patch, MagicMock
+import pytest
+
+from guardcode.agent import run_agent_loop, _format_assistant_message, _format_tool_result
+from guardcode.config import Config
+
+
+class TestFormatHelpers:
+    """测试消息格式化辅助函数"""
+
+    def test_format_assistant_message_no_tool_calls(self):
+        """测试格式化无工具调用的 assistant 消息"""
+        response = {
+            "content": "Hello, I can help you with that.",
+            "tool_calls": []
+        }
+        
+        result = _format_assistant_message(response)
+        
+        assert result["role"] == "assistant"
+        assert result["content"] == "Hello, I can help you with that."
+        assert "tool_calls" not in result
+
+    def test_format_assistant_message_with_tool_calls(self):
+        """测试格式化带工具调用的 assistant 消息"""
+        response = {
+            "content": "I'll read that file for you.",
+            "tool_calls": [
+                {
+                    "id": "call_123",
+                    "name": "read_file",
+                    "arguments": {"path": "test.txt"}
+                }
+            ]
+        }
+        
+        result = _format_assistant_message(response)
+        
+        assert result["role"] == "assistant"
+        assert result["content"] == "I'll read that file for you."
+        assert len(result["tool_calls"]) == 1
+        assert result["tool_calls"][0]["id"] == "call_123"
+        assert result["tool_calls"][0]["type"] == "function"
+        assert result["tool_calls"][0]["function"]["name"] == "read_file"
+        # arguments 应该是 JSON 字符串
+        args = json.loads(result["tool_calls"][0]["function"]["arguments"])
+        assert args == {"path": "test.txt"}
+
+    def test_format_tool_result(self):
+        """测试格式化工具执行结果"""
+        result = {
+            "success": True,
+            "result": "File content here",
+            "error": ""
+        }
+        
+        message = _format_tool_result("call_123", result)
+        
+        assert message["role"] == "tool"
+        assert message["tool_call_id"] == "call_123"
+        # content 应该是 JSON 字符串
+        content = json.loads(message["content"])
+        assert content["success"] is True
+        assert content["result"] == "File content here"
+
+
+class TestAgentLoop:
+    """测试 Agent 主循环"""
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_simple_task_completion(self, mock_init_ws, mock_execute, mock_call):
+        """测试简单任务完成（无工具调用）"""
+        # 模拟模型直接返回答案，无工具调用
+        mock_call.return_value = {
+            "content": "Task completed successfully.",
+            "tool_calls": [],
+            "finish_reason": "stop"
+        }
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Say hello", config=config, max_iterations=5)
+        
+        assert result == "Task completed successfully."
+        assert mock_call.call_count == 1
+        assert mock_execute.call_count == 0
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_single_tool_call(self, mock_init_ws, mock_execute, mock_call):
+        """测试单次工具调用"""
+        # 第一次调用：模型返回工具调用
+        # 第二次调用：模型返回最终答案
+        mock_call.side_effect = [
+            {
+                "content": "I'll read the file.",
+                "tool_calls": [
+                    {
+                        "id": "call_123",
+                        "name": "read_file",
+                        "arguments": {"path": "test.txt"}
+                    }
+                ],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "The file contains: Hello World",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            }
+        ]
+        
+        mock_execute.return_value = {
+            "success": True,
+            "result": "Hello World",
+            "error": ""
+        }
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read test.txt", config=config, max_iterations=5)
+        
+        assert result == "The file contains: Hello World"
+        assert mock_call.call_count == 2
+        assert mock_execute.call_count == 1
+        mock_execute.assert_called_once_with("read_file", {"path": "test.txt"})
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_multiple_tool_calls(self, mock_init_ws, mock_execute, mock_call):
+        """测试多次工具调用"""
+        mock_call.side_effect = [
+            # 第一次：列出文件
+            {
+                "content": "Listing files...",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "name": "list_files",
+                        "arguments": {"directory": "."}
+                    }
+                ],
+                "finish_reason": "tool_calls"
+            },
+            # 第二次：读取文件
+            {
+                "content": "Reading file...",
+                "tool_calls": [
+                    {
+                        "id": "call_2",
+                        "name": "read_file",
+                        "arguments": {"path": "test.txt"}
+                    }
+                ],
+                "finish_reason": "tool_calls"
+            },
+            # 第三次：完成
+            {
+                "content": "Done. Found 2 files and read test.txt.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            }
+        ]
+        
+        mock_execute.side_effect = [
+            {"success": True, "result": ["test.txt", "other.txt"], "error": ""},
+            {"success": True, "result": "File content", "error": ""}
+        ]
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("List and read files", config=config, max_iterations=10)
+        
+        assert "Done" in result
+        assert mock_call.call_count == 3
+        assert mock_execute.call_count == 2
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_tool_failure_recovery(self, mock_init_ws, mock_execute, mock_call):
+        """测试工具失败后恢复"""
+        mock_call.side_effect = [
+            # 第一次：尝试读取不存在的文件
+            {
+                "content": "Reading file...",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "name": "read_file",
+                        "arguments": {"path": "nonexistent.txt"}
+                    }
+                ],
+                "finish_reason": "tool_calls"
+            },
+            # 第二次：尝试其他方法
+            {
+                "content": "File not found, creating it.",
+                "tool_calls": [
+                    {
+                        "id": "call_2",
+                        "name": "write_file",
+                        "arguments": {"path": "nonexistent.txt", "content": "New content"}
+                    }
+                ],
+                "finish_reason": "tool_calls"
+            },
+            # 第三次：完成
+            {
+                "content": "File created successfully.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            }
+        ]
+        
+        mock_execute.side_effect = [
+            {"success": False, "result": "", "error": "File not found"},
+            {"success": True, "result": "Written", "error": ""}
+        ]
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Handle missing file", config=config, max_iterations=10)
+        
+        assert "created successfully" in result
+        assert mock_call.call_count == 3
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.init_workspace')
+    def test_max_iterations_reached(self, mock_init_ws, mock_call):
+        """测试达到最大迭代次数"""
+        # 模型一直返回工具调用，永不停止
+        mock_call.return_value = {
+            "content": "Continuing...",
+            "tool_calls": [
+                {
+                    "id": "call_123",
+                    "name": "list_files",
+                    "arguments": {"directory": "."}
+                }
+            ],
+            "finish_reason": "tool_calls"
+        }
+        
+        with patch('guardcode.agent.execute_tool') as mock_execute:
+            mock_execute.return_value = {
+                "success": True,
+                "result": [],
+                "error": ""
+            }
+            
+            config = Config(workspace=".", model="gpt-4-turbo")
+            result = run_agent_loop("Infinite task", config=config, max_iterations=3)
+            
+            assert "maximum iterations" in result
+            assert mock_call.call_count == 3
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_consecutive_failures(self, mock_init_ws, mock_execute, mock_call):
+        """测试连续失败超限"""
+        mock_call.return_value = {
+            "content": "Trying...",
+            "tool_calls": [
+                {
+                    "id": "call_123",
+                    "name": "read_file",
+                    "arguments": {"path": "bad.txt"}
+                }
+            ],
+            "finish_reason": "tool_calls"
+        }
+        
+        # 工具一直失败
+        mock_execute.return_value = {
+            "success": False,
+            "result": "",
+            "error": "File not found"
+        }
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read bad file", config=config, max_iterations=10)
+        
+        assert "consecutive failures" in result
+        # 应该在 3 次连续失败后停止
+        assert mock_execute.call_count == 3
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.init_workspace')
+    def test_model_call_failure(self, mock_init_ws, mock_call):
+        """测试模型调用失败"""
+        # 模型调用抛出异常
+        mock_call.side_effect = Exception("API Error")
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Test task", config=config, max_iterations=5)
+        
+        assert "consecutive failures" in result
+        # 应该尝试 3 次后停止
+        assert mock_call.call_count == 3
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_model_failure_then_success(self, mock_init_ws, mock_execute, mock_call):
+        """测试模型失败后恢复"""
+        # 前两次失败，第三次成功
+        mock_call.side_effect = [
+            Exception("Timeout"),
+            Exception("Network Error"),
+            {
+                "content": "Success!",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            }
+        ]
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Test recovery", config=config, max_iterations=10)
+        
+        assert result == "Success!"
+        assert mock_call.call_count == 3
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_multiple_tools_in_one_call(self, mock_init_ws, mock_execute, mock_call):
+        """测试一次调用多个工具"""
+        mock_call.side_effect = [
+            # 一次返回多个工具调用
+            {
+                "content": "Processing...",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "name": "list_files",
+                        "arguments": {"directory": "."}
+                    },
+                    {
+                        "id": "call_2",
+                        "name": "read_file",
+                        "arguments": {"path": "test.txt"}
+                    }
+                ],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "All done!",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            }
+        ]
+        
+        mock_execute.side_effect = [
+            {"success": True, "result": ["test.txt"], "error": ""},
+            {"success": True, "result": "Content", "error": ""}
+        ]
+        
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Multi-tool task", config=config, max_iterations=5)
+        
+        assert result == "All done!"
+        assert mock_execute.call_count == 2
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

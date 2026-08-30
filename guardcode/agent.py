@@ -1,10 +1,10 @@
 """
 GuardCode Agent 核心循环
 
-这是 agent 的核心模块。以下代码提供了框架和接口参考，
-标有 TODO 的部分需要你自己实现。
+这是 agent 的核心模块。框架已实现辅助函数和整体结构，
+标有 # TODO 的部分需要你参照参考文档完成实现。
 
-参考文档：c:\Users\Administrator\.trae-cn\work\6a912b0a30b254be79a400d8\agent_loop_guide.md
+参考文档：agent_loop_guide.md（位于项目根目录）
 """
 
 import json
@@ -15,6 +15,10 @@ from .config import Config, load_config
 from .model import call_model
 from .tools.base import execute_tool, get_tool_schemas
 from .workspace import init_workspace
+
+# 确保工具被注册（import 即触发 @register_tool 装饰器）
+from .tools import file_tools       # noqa: F401
+from .tools import command_tools    # noqa: F401
 
 
 # ──────────────────────────────────────────────────────────
@@ -55,7 +59,77 @@ SYSTEM_PROMPT = """You are GuardCode Agent, a coding assistant focused on trustw
 
 
 # ──────────────────────────────────────────────────────────
-# Agent Loop
+# Helper Functions（已实现，不需要修改）
+# ──────────────────────────────────────────────────────────
+
+def _format_assistant_message(response: dict[str, Any]) -> dict[str, Any]:
+    """将 call_model 的返回值转换为 OpenAI assistant 消息格式。
+
+    call_model 返回: {"content": str|None, "tool_calls": [{"id", "name", "arguments"}]}
+    OpenAI 需要的格式:
+        无 tool_calls 时: {"role": "assistant", "content": "..."}
+        有 tool_calls 时: {"role": "assistant", "content": "...", "tool_calls": [
+            {"id": "...", "type": "function", "function": {"name": "...", "arguments": "..."}}
+        ]}
+
+    注意: OpenAI 的 arguments 字段必须是 JSON 字符串，不是 dict。
+    """
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": response["content"],
+    }
+
+    if response["tool_calls"]:
+        message["tool_calls"] = [
+            {
+                "id": tc["id"],
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": json.dumps(tc["arguments"], ensure_ascii=False),
+                },
+            }
+            for tc in response["tool_calls"]
+        ]
+
+    return message
+
+
+def _format_tool_result(tool_call_id: str, result: dict[str, Any]) -> dict[str, Any]:
+    """将工具执行结果转换为 OpenAI tool 消息格式。
+
+    Args:
+        tool_call_id: 对应的 tool_call ID（用于关联请求和响应）
+        result: execute_tool 的返回值 {"success", "result", "error"}
+
+    Returns:
+        {"role": "tool", "tool_call_id": "...", "content": "..."}
+    """
+    return {
+        "role": "tool",
+        "tool_call_id": tool_call_id,
+        "content": json.dumps(result, ensure_ascii=False, default=str),
+    }
+
+
+def _print_verbose(msg: str, config: Config) -> None:
+    """verbose 模式下打印调试信息到 stderr。"""
+    if config.verbose:
+        print(f"[agent] {msg}", file=sys.stderr)
+
+
+def _log_to_file(msg: str, config: Config) -> None:
+    """将日志写入配置的日志文件（如果设置了 log_file）。"""
+    if config.log_file:
+        try:
+            with open(config.log_file, "a", encoding="utf-8") as f:
+                f.write(msg + "\n")
+        except OSError:
+            pass  # 日志写入失败不应影响主流程
+
+
+# ──────────────────────────────────────────────────────────
+# Agent Loop（核心部分 — 需要你实现 TODO 标记的代码）
 # ──────────────────────────────────────────────────────────
 
 def run_agent_loop(
@@ -63,8 +137,7 @@ def run_agent_loop(
     config: Config | None = None,
     max_iterations: int = 50,
 ) -> str:
-    """
-    Agent 主循环。
+    """Agent 主循环。
 
     流程：
     1. 初始化消息列表（system prompt + user task）
@@ -79,7 +152,6 @@ def run_agent_loop(
     Returns:
         agent 的最终文本回复
     """
-
     # ── 1. 初始化 ──────────────────────────────────────────
     if config is None:
         config = load_config()
@@ -91,65 +163,98 @@ def run_agent_loop(
         {"role": "user", "content": task},
     ]
 
-    # TODO: 初始化你的计数器
-    # iteration = 0
-    # consecutive_failures = 0
-    # MAX_CONSECUTIVE_FAILURES = 3
+    # 初始化计数器
+    iteration = 0
+    consecutive_failures = 0
+    MAX_CONSECUTIVE_FAILURES = 3
 
-    # ── 2. 主循环 ──────────────────────────────────────────
-    # TODO: 实现 while 循环
-    # 提示：
-    #   while iteration < max_iterations:
-    #       # 2a. 检查上下文长度（Phase 3 再做，先跳过）
-    #
-    #       # 2b. 调用模型
-    #       # response = call_model(messages, model_name=config.model, ...)
-    #       # response 格式: {"content": str|None, "tool_calls": [{"id", "name", "arguments"}]}
-    #
-    #       # 2c. 把 assistant 回复加入消息历史
-    #       #    需要构造 OpenAI 格式的 assistant message
-    #       #    如果有 tool_calls，格式是：
-    #       #    {"role": "assistant", "content": response["content"], "tool_calls": [...]}
-    #       #    如果没有 tool_calls，格式是：
-    #       #    {"role": "assistant", "content": response["content"]}
-    #
-    #       # 2d. 检查终止条件：没有 tool_calls → 任务完成
-    #       #    if not response["tool_calls"]:
-    #       #        return response["content"] or "Task completed."
-    #
-    #       # 2e. 有 tool_calls → 逐个执行
-    #       #    for tool_call in response["tool_calls"]:
-    #       #        # TODO: 在这里加 classify_risk 判定（Phase 2）
-    #       #        # TODO: dangerous 时暂停等用户确认
-    #       #        result = execute_tool(tool_call["name"], tool_call["arguments"])
-    #       #
-    #       #        # 把工具结果加入消息历史
-    #       #        # 格式: {"role": "tool", "tool_call_id": tool_call["id"], "content": json.dumps(result)}
-    #       #
-    #       #        # TODO: 连续失败计数
-    #       #        # if not result["success"]:
-    #       #        #     consecutive_failures += 1
-    #       #        # else:
-    #       #        #     consecutive_failures = 0
-    #       #        #
-    #       #        # TODO: 连续失败超限 → 终止
-    #       #        # if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-    #       #     return "Agent stopped: too many consecutive failures."
-    #
-    #       # 2f. iteration += 1
+    _print_verbose(f"Agent started. Task: {task[:100]}...", config)
 
-    # TODO: 达到 max_iterations 时的处理
-    # return "Agent stopped: reached maximum iterations."
+    # 主循环
+    while iteration < max_iterations:
+        iteration += 1
+        _print_verbose(f"Starting iteration {iteration}...", config)
 
-    pass  # 删除这行，替换为你的实现
+        # 调用模型
+        try:
+            response = call_model(
+                messages,
+                model_name=config.model,
+                api_key=config.api_key,
+                api_base=config.api_base
+            )
+        except Exception as e:
+            consecutive_failures += 1
+            _print_verbose(f"Model call failed: {e}", config)
+            _log_to_file(f"[Iteration {iteration}] Model error: {e}", config)
+            
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                _print_verbose("Too many consecutive failures.", config)
+                return "Agent stopped: too many consecutive failures."
+            continue
+
+        # 将 assistant 回复加入消息历史
+        messages.append(_format_assistant_message(response))
+
+        # 检查是否有工具调用
+        if not response["tool_calls"]:
+            _print_verbose("No tool calls, task completed.", config)
+            return response["content"] or "Task completed."
+
+        # 执行工具调用
+        for tool_call in response["tool_calls"]:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["arguments"]
+            tool_id = tool_call["id"]
+
+            _print_verbose(f"Executing tool: {tool_name}({tool_args})", config)
+            _log_to_file(f"[Iteration {iteration}] Tool: {tool_name}({tool_args})", config)
+
+            # TODO (Phase 2): 在这里加 classify_risk 判定
+            result = execute_tool(tool_name, tool_args)
+
+            _print_verbose(
+                f"Tool result: success={result['success']}, "
+                f"error={result.get('error', '')}",
+                config,
+            )
+            _log_to_file(
+                f"[Iteration {iteration}] Result: {result}",
+                config
+            )
+
+            # 将工具结果加入消息历史
+            messages.append(_format_tool_result(tool_id, result))
+
+            # 连续失败计数
+            if not result["success"]:
+                consecutive_failures += 1
+            else:
+                consecutive_failures = 0
+
+            # 连续失败超限 → 终止
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                _print_verbose("Too many consecutive failures.", config)
+                return "Agent stopped: too many consecutive failures."
+
+        _print_verbose(f"Iteration {iteration} complete.", config)
+
+    # 达到 max_iterations
+    _print_verbose(f"Reached max iterations ({max_iterations}).", config)
+    return "Agent stopped: reached maximum iterations."
 
 
 # ──────────────────────────────────────────────────────────
-# CLI 入口（可选，也可以放在 __main__.py 里）
+# CLI 入口
 # ──────────────────────────────────────────────────────────
 
 def main():
-    """命令行入口"""
+    """命令行入口。
+
+    用法:
+        python -m guardcode.agent "你的编程任务"
+        python -m guardcode.agent "写一个冒泡排序" --workspace ./myproject
+    """
     import argparse
 
     parser = argparse.ArgumentParser(description="GuardCode Agent")
