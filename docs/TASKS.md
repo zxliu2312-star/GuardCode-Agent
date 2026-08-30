@@ -119,20 +119,20 @@
 ## Phase 2：安全机制（1-2 天）
 
 ### 2.1 风险分级规则定义
-- [ ] 在 `security/risk_classifier.py` 中定义规则
-  - [ ] `SAFE_PATTERNS`（正则表达式列表）
-  - [ ] `DANGEROUS_PATTERNS`（正则表达式列表）
-  - [ ] `RiskLevel` 枚举（SAFE, DANGEROUS, BLOCKED）
+- [x] 在 `security/risk_classifier.py` 中定义规则
+  - [x] `SAFE_PATTERNS`（正则表达式列表）
+  - [x] `DANGEROUS_PATTERNS`（正则表达式列表）
+  - [x] `RiskLevel` 枚举（SAFE, DANGEROUS, BLOCKED）
 
 ### 2.2 风险分级实现
-- [ ] 实现 `classify_risk(tool_name: str, args: dict, config: dict) -> RiskLevel`
-  - [ ] 检查 `config.security.always_block`
-  - [ ] 检查 `config.security.auto_approve`
-  - [ ] 对于 `run_command`，匹配 `DANGEROUS_PATTERNS`
-  - [ ] 对于 `run_command`，匹配 `SAFE_PATTERNS`
-  - [ ] 对于 `delete_file`，始终返回 DANGEROUS
-  - [ ] 对于其他文件工具，返回 SAFE
-  - [ ] 默认返回 DANGEROUS（保守策略）
+- [x] 实现 `classify_risk(tool_name: str, args: dict, config: dict) -> RiskLevel`
+  - [x] 检查 `config.security.always_block`
+  - [x] 检查 `config.security.auto_approve`
+  - [x] 对于 `run_command`，匹配 `DANGEROUS_PATTERNS`
+  - [x] 对于 `run_command`，匹配 `SAFE_PATTERNS`
+  - [x] 对于 `delete_file`，始终返回 DANGEROUS
+  - [x] 对于其他文件工具，返回 SAFE
+  - [x] 默认返回 DANGEROUS（保守策略）
 
 ### 2.3 用户确认流程
 - [ ] 实现 `confirm_operation(tool_name: str, args: dict) -> bool`
