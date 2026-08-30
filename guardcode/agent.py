@@ -118,6 +118,23 @@ def _print_verbose(msg: str, config: Config) -> None:
         print(f"[agent] {msg}", file=sys.stderr)
 
 
+def _print_tool_call(name: str, args: dict) -> None:
+    """打印工具调用信息（始终可见）。"""
+    args_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
+    print(f"[Tool] {name}({args_str})")
+
+
+def _print_tool_result(result: dict[str, Any]) -> None:
+    """打印工具执行结果（始终可见）。"""
+    if result["success"]:
+        output = str(result["result"])
+        if len(output) > 200:
+            output = output[:200] + "..."
+        print(f"[Result] {output}")
+    else:
+        print(f"[Error] {result.get('error', 'Unknown error')}")
+
+
 def _log_to_file(msg: str, config: Config) -> None:
     """将日志写入配置的日志文件（如果设置了 log_file）。"""
     if config.log_file:
@@ -208,11 +225,13 @@ def run_agent_loop(
             tool_id = tool_call["id"]
 
             _print_verbose(f"Executing tool: {tool_name}({tool_args})", config)
+            _print_tool_call(tool_name, tool_args)
             _log_to_file(f"[Iteration {iteration}] Tool: {tool_name}({tool_args})", config)
 
             # TODO (Phase 2): 在这里加 classify_risk 判定
             result = execute_tool(tool_name, tool_args)
 
+            _print_tool_result(result)
             _print_verbose(
                 f"Tool result: success={result['success']}, "
                 f"error={result.get('error', '')}",

@@ -104,15 +104,15 @@
   - [x] 打印最终结果
 
 ### 1.10 基础输出
-- [ ] 实现简单的打印输出
-  - [ ] 打印工具调用：`[Tool] {name}({args})`
-  - [ ] 打印工具结果：`[Result] {result}`
-  - [ ] 打印错误：`[Error] {error}`
+- [x] 实现简单的打印输出
+  - [x] 打印工具调用：`[Tool] {name}({args})`
+  - [x] 打印工具结果：`[Result] {result}`
+  - [x] 打印错误：`[Error] {error}`
 
 ### 1.11 验收测试
-- [ ] 测试任务 1：`guardcode "create a file hello.txt with content 'Hello World'"`
-- [ ] 测试任务 2：`guardcode "write a Python function to calculate fibonacci in fib.py"`
-- [ ] 测试任务 3：`guardcode "list all Python files in current directory"`
+- [x] 测试任务 1：`guardcode "create a file hello.txt with content 'Hello World'"`
+- [x] 测试任务 2：`guardcode "write a Python function to calculate fibonacci in fib.py"`
+- [x] 测试任务 3：`guardcode "list all Python files in current directory"`
 
 ---
 
