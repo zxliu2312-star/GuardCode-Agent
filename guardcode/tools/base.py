@@ -211,21 +211,21 @@ def execute_tool(
             "error": f"Tool '{name}' not found",
         }
 
-    # 风险分级（传入 config 时才检查）
-    if config is not None:
-        security_config = _extract_security_config(config)
-        risk_level = classify_risk(name, args, security_config)
+    # 风险分级（fail-safe：config 为 None 时用空配置，
+    # classify_risk 会将未知操作默认判为 DANGEROUS）
+    security_config = _extract_security_config(config) if config is not None else {}
+    risk_level = classify_risk(name, args, security_config)
 
-        if risk_level == RiskLevel.BLOCKED:
-            print(format_blocked_message(name, args))
-            return {
-                "success": False,
-                "result": None,
-                "error": "Operation blocked by security policy",
-            }
+    if risk_level == RiskLevel.BLOCKED:
+        print(format_blocked_message(name, args))
+        return {
+            "success": False,
+            "result": None,
+            "error": "Operation blocked by security policy",
+        }
 
-        if risk_level == RiskLevel.DANGEROUS:
-            if not confirm_operation(name, args):
+    if risk_level == RiskLevel.DANGEROUS:
+        if not confirm_operation(name, args):
                 return {
                     "success": False,
                     "result": None,

@@ -127,14 +127,24 @@ class TestExecuteToolSecurityIntegration:
         # input should never have been called
         mock_input.assert_not_called()
 
-    def test_no_config_skips_security(self, workspace):
-        """Without config, execute_tool should skip risk checks."""
-        # No config = no risk check, should execute directly
+    def test_no_config_still_checks_security(self, workspace):
+        """Without config, execute_tool should still do risk checks (fail-safe).
+        
+        classify_risk with empty config defaults to DANGEROUS for unknown
+        commands, so dangerous commands should still be blocked or prompt.
+        """
+        # read_file is always SAFE regardless of config
         result = execute_tool("read_file", {"path": "nonexistent.txt"})
         assert result["success"] is False
-        # Should be a file error, not a security error
-        assert "blocked" not in result["error"].lower()
-        assert "rejected" not in result["error"].lower()
+        assert "exist" in result["error"].lower()
+
+        # delete_file is always DANGEROUS regardless of config
+        # Without config, it should still prompt (fail-safe)
+        with patch('builtins.input', return_value='n') as mock_input:
+            result = execute_tool("delete_file", {"path": "anyfile.txt"})
+            mock_input.assert_called_once()
+            assert result["success"] is False
+            assert "rejected" in result["error"].lower()
 
     @patch('builtins.input', return_value='y')
     def test_delete_file_prompts_confirmation(self, mock_input, workspace):
