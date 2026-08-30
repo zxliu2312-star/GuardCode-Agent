@@ -150,19 +150,19 @@
   - [x] 如果是 SAFE，直接执行
 
 ### 2.5 代码静态扫描
-- [ ] 实现 `security/code_scanner.py`
-  - [ ] 定义 `CODE_RISK_PATTERNS`（dict，模式名 → 正则）
-  - [ ] 实现 `scan_python_code(content: str) -> list[dict]`
-    - [ ] 逐行匹配正则
-    - [ ] 返回发现的风险列表：`[{"pattern": str, "line": int, "content": str}]`
+- [x] 实现 `security/code_scanner.py`
+  - [x] 定义 `CODE_RISK_PATTERNS`（dict，模式名 → 正则）
+  - [x] 实现 `scan_python_code(content: str) -> list[dict]`
+    - [x] 逐行匹配正则
+    - [x] 返回发现的风险列表：`[{"pattern": str, "line": int, "content": str}]`
 
 ### 2.6 集成代码扫描到 write_file
-- [ ] 修改 `write_file()` 函数
-  - [ ] 检查文件扩展名是否为 `.py`
-  - [ ] 如果是，调用 `scan_python_code(content)`
-  - [ ] 如果发现风险，打印警告
-  - [ ] 询问用户：[c]ontinue / [a]bort
-  - [ ] 根据用户选择决定是否写入
+- [x] 修改 `write_file()` 函数
+  - [x] 检查文件扩展名是否为 `.py`
+  - [x] 如果是，调用 `scan_python_code(content)`
+  - [x] 如果发现风险，打印警告
+  - [x] 询问用户：[c]ontinue / [a]bort
+  - [x] 根据用户选择决定是否写入
 
 ### 2.7 配置文件扩展
 - [ ] 扩展配置格式，添加 `security` 字段

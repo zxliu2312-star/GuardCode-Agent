@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Any
 from ..workspace import get_workspace
 from .base import register_tool
+from ..security import scan_python_code, format_scan_results
 
 
 @register_tool(
@@ -111,7 +112,10 @@ def read_file(path: str) -> Dict[str, Any]:
 def write_file(path: str, content: str) -> Dict[str, Any]:
     """
     写入文件内容
-    
+
+    如果文件是 .py 后缀，会先进行静态安全扫描。
+    发现风险时提示用户选择继续或中止。
+
     Args:
         path: 文件路径（相对或绝对）
         content: 要写入的内容
@@ -123,6 +127,20 @@ def write_file(path: str, content: str) -> Dict[str, Any]:
         # 路径校验
         workspace = get_workspace()
         validated_path = workspace.validate_path(path)
+        
+        # 代码静态扫描（仅 .py 文件）
+        if validated_path.suffix == ".py":
+            risks = scan_python_code(content)
+            if risks:
+                print(format_scan_results(risks))
+                print(f"  写入 {path} 前发现上述风险。")
+                choice = input("  [c]ontinue / [a]bort: ").strip().lower()
+                if choice != "c":
+                    return {
+                        "success": False,
+                        "result": "",
+                        "error": f"Write aborted: {len(risks)} security risk(s) detected in code",
+                    }
         
         # 创建父目录（如果不存在）
         validated_path.parent.mkdir(parents=True, exist_ok=True)
