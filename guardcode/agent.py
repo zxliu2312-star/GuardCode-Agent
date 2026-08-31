@@ -9,12 +9,14 @@ GuardCode Agent 核心循环
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from .config import Config, load_config
 from .model import call_model
 from .tools.base import execute_tool, get_tool_schemas
 from .workspace import init_workspace
+from .context import should_compress, compress_history
 
 # 确保工具被注册（import 即触发 @register_tool 装饰器）
 from .tools import file_tools       # noqa: F401
@@ -95,20 +97,40 @@ def _format_assistant_message(response: dict[str, Any]) -> dict[str, Any]:
     return message
 
 
-def _format_tool_result(tool_call_id: str, result: dict[str, Any]) -> dict[str, Any]:
+def _format_tool_result(
+    tool_call_id: str,
+    tool_name: str,
+    result: dict[str, Any],
+    tool_args: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """将工具执行结果转换为 OpenAI tool 消息格式。
+
+    在 content JSON 中增加元信息（_tool_name, _path），
+    供上下文压缩器使用（写后失效、按需重读）。
 
     Args:
         tool_call_id: 对应的 tool_call ID（用于关联请求和响应）
+        tool_name: 工具名称（如 "read_file", "write_file"）
         result: execute_tool 的返回值 {"success", "result", "error"}
+        tool_args: 工具参数（可选，用于提取路径元信息）
 
     Returns:
         {"role": "tool", "tool_call_id": "...", "content": "..."}
     """
+    content = result.copy()
+    content["_tool_name"] = tool_name
+
+    # 对文件操作工具，记录规范化路径（用于写后失效匹配）
+    if tool_name in ("read_file", "write_file", "delete_file") and tool_args:
+        path = tool_args.get("path", "")
+        if path:
+            # 规范化路径：统一分隔符，消除 ./ 前缀
+            content["_path"] = Path(path).as_posix()
+
     return {
         "role": "tool",
         "tool_call_id": tool_call_id,
-        "content": json.dumps(result, ensure_ascii=False, default=str),
+        "content": json.dumps(content, ensure_ascii=False, default=str),
     }
 
 
@@ -192,6 +214,23 @@ def run_agent_loop(
         iteration += 1
         _print_verbose(f"Starting iteration {iteration}...", config)
 
+        # 上下文压缩：在调用模型前检查并压缩
+        if should_compress(messages, threshold=config.context.max_context_size):
+            original_count = len(messages)
+            messages = compress_history(
+                messages,
+                keep_recent=config.context.keep_recent_messages,
+            )
+            _print_verbose(
+                f"Context compressed: {original_count} -> {len(messages)} messages",
+                config,
+            )
+            _log_to_file(
+                f"[Iteration {iteration}] Context compressed: "
+                f"{original_count} -> {len(messages)} messages",
+                config,
+            )
+
         # 调用模型
         try:
             response = call_model(
@@ -242,8 +281,8 @@ def run_agent_loop(
                 config
             )
 
-            # 将工具结果加入消息历史
-            messages.append(_format_tool_result(tool_id, result))
+            # 将工具结果加入消息历史（含工具元信息，供压缩器使用）
+            messages.append(_format_tool_result(tool_id, tool_name, result, tool_args))
 
             # 连续失败计数
             if not result["success"]:

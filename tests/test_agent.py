@@ -58,15 +58,44 @@ class TestFormatHelpers:
             "result": "File content here",
             "error": ""
         }
-        
-        message = _format_tool_result("call_123", result)
-        
+
+        message = _format_tool_result("call_123", "read_file", result, {"path": "test.txt"})
+
         assert message["role"] == "tool"
         assert message["tool_call_id"] == "call_123"
         # content 应该是 JSON 字符串
         content = json.loads(message["content"])
         assert content["success"] is True
         assert content["result"] == "File content here"
+        # 元信息
+        assert content["_tool_name"] == "read_file"
+        assert content["_path"] == "test.txt"
+
+    def test_format_tool_result_no_args(self):
+        """测试格式化工具结果（无参数时不应崩溃）"""
+        result = {
+            "success": True,
+            "result": "output",
+            "error": ""
+        }
+
+        message = _format_tool_result("call_456", "run_command", result)
+
+        content = json.loads(message["content"])
+        assert content["_tool_name"] == "run_command"
+        assert "_path" not in content
+
+    def test_format_tool_result_path_normalization(self):
+        """测试路径规范化（./src/main.py → src/main.py）"""
+        result = {
+            "success": True,
+            "result": "content",
+            "error": ""
+        }
+
+        message = _format_tool_result("call_789", "write_file", result, {"path": "./src/main.py", "content": "code"})
+        content = json.loads(message["content"])
+        assert content["_path"] == "src/main.py"
 
 
 class TestAgentLoop:
