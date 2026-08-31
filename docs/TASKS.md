@@ -193,30 +193,38 @@
   - [x] `should_compress(messages: list, threshold: int) -> bool`
     - [x] 比较总字符数与阈值
 
-### 3.2 摘要生成
-- [ ] 实现 `context/summarizer.py`
-  - [ ] `summarize_messages(messages: list) -> str`
-    - [ ] 构造摘要 prompt
-    - [ ] 调用模型（使用 较次模型 节省成本）
-    - [ ] 返回摘要内容
-    - [ ] 异常处理：返回兜底消息
+### 3.2 逐轮压缩器
+- [ ] 实现 `context/compressor.py`
+  - [ ] `compress_tool_call(tool_call: dict) -> dict`
+    - [ ] 保留工具名 `name`
+    - [ ] 保留关键参数摘要（如 path, command 的前 100 字符）
+    - [ ] 丢弃大体积参数（如 write_file 的 content 全文）
+    - [ ] 添加标记 `"_compressed": true`
+  - [ ] `compress_tool_result(result_msg: dict) -> dict`
+    - [ ] 保留 success/error 状态
+    - [ ] 保留结果摘要（前 200 字符）
+    - [ ] 丢弃完整结果内容（如 read_file 返回的全文）
+    - [ ] 添加标记 `"_compressed": true`
+  - [ ] `compress_tool_message(message: dict) -> dict`
+    - [ ] 判断消息类型：assistant with tool_calls / tool role
+    - [ ] 对 assistant 消息：压缩每个 tool_call 的参数
+    - [ ] 对 tool 消息：压缩 result 内容
+    - [ ] 非工具消息原样返回
+  - [ ] `compress_round(messages: list, keep_recent: int = 2) -> list`
+    - [ ] 从后往前找最近 `keep_recent` 轮工具消息（assistant+tool 配对）
+    - [ ] 对更早的工具消息逐条调用 `compress_tool_message()`
+    - [ ] 跳过已标记 `_compressed` 的消息（避免重复压缩）
+    - [ ] 非工具消息（system/user/纯文本 assistant）不压缩
+    - [ ] 返回压缩后的消息列表
 
-### 3.3 上下文压缩
-- [ ] 实现 `compress_history(messages: list, config: dict) -> list`
-  - [ ] 提取永久消息：`messages[0:2]`
-  - [ ] 提取最近消息：`messages[-K:]`（K 从配置读取）
-  - [ ] 提取中间消息：`messages[2:-K]`
-  - [ ] 如果中间消息不为空，调用 `summarize_messages()`
-  - [ ] 构造摘要消息：`{"role": "system", "content": "[摘要]: ..."}`
-  - [ ] 返回：永久 + 摘要 + 最近
-
-### 3.4 集成上下文压缩到 Agent Loop
+### 3.3 集成到 Agent Loop
 - [ ] 修改 `run_agent_loop()`
-  - [ ] 在每次调用模型前，检查 `should_compress()`
-  - [ ] 如果需要压缩，调用 `compress_history()`
-  - [ ] 打印压缩提示（可选）
+  - [ ] 每轮工具调用完成后，调用 `compress_round(messages, keep_recent=2)`
+  - [ ] 保留最近 2 轮工具消息完整，压缩更早的
+  - [ ] 打印压缩提示（压缩了多少条消息）
+  - [ ] 兜底：如果 `should_compress()` 仍触发，对已压缩消息做截断
 
-### 3.5 System Prompt 优化
+### 3.4 System Prompt 优化
 - [ ] 编写完整的 System Prompt
   - [ ] 角色定位：GuardCode Agent，专注可信软件开发
   - [ ] 工具说明：列出每个工具及其用途
@@ -227,14 +235,14 @@
   - [ ] 安全注意事项：所有操作限制在 workspace 内
   - [ ] 最佳实践：增量修改、读取后再修改、使用版本控制
 
-### 3.6 迭代终止条件
+### 3.5 迭代终止条件
 - [ ] 完善循环终止逻辑
   - [ ] 达到 `max_iterations`：打印警告并退出
   - [ ] 无工具调用：正常结束
   - [ ] 循环检测（可选）：连续两轮工具调用相同
 
-### 3.7 验收测试
-- [ ] 测试长对话：构造需要多次迭代的任务，观察是否触发压缩
+### 3.6 验收测试
+- [ ] 测试多轮压缩：构造需要多次迭代的任务，观察上下文是否稳定
 - [ ] 测试测试驱动修复：`guardcode "fix the bug in calculator.py, tests are in test_calculator.py"`
   - [ ] 观察是否：list_files → read → write → run pytest → 修复 → 再测试
 - [ ] 测试 TDD 流程：`guardcode "implement a stack with push/pop/peek"`
@@ -343,10 +351,12 @@
   - [ ] 测试配置规则：always_block、auto_approve
 
 ### 上下文测试
-- [ ] `tests/test_context.py`
-  - [ ] 测试 `estimate_context_size`
-  - [ ] 测试 `compress_history`：边界情况（消息数 < K）
-  - [ ] 测试摘要生成（使用 mock）
+- [ ] `tests/test_context_compressor.py`
+  - [ ] 测试 `compress_tool_call`：大参数被压缩、小参数保留
+  - [ ] 测试 `compress_tool_result`：大结果被压缩、状态保留
+  - [ ] 测试 `compress_tool_message`：assistant/tool 消息分别处理
+  - [ ] 测试 `compress_round`：保留最近 N 轮、压缩更早的、跳过已压缩的
+  - [ ] 测试 `estimate_context_size` 和 `should_compress`
 
 ---
 
