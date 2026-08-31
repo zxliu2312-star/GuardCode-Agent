@@ -23,7 +23,7 @@ class FakeClient:
 
 def make_response(content=None, tool_calls=None):
     message = SimpleNamespace(content=content, tool_calls=tool_calls)
-    choice = SimpleNamespace(message=message)
+    choice = SimpleNamespace(message=message, finish_reason="stop")
     return SimpleNamespace(choices=[choice])
 
 
@@ -39,7 +39,7 @@ def test_call_model_returns_text_and_sends_registered_tools(monkeypatch):
         api_base="https://example.test/v1",
     )
 
-    assert result == {"content": "Done", "tool_calls": []}
+    assert result == {"content": "Done", "tool_calls": [], "finish_reason": "stop"}
     assert fake_client.chat.completions.kwargs == {
         "model": "custom-model",
         "messages": [{"role": "user", "content": "hello"}],
@@ -63,6 +63,7 @@ def test_call_model_parses_tool_calls_into_standard_dicts(monkeypatch):
         "tool_calls": [
             {"id": "call-1", "name": "read_file", "arguments": {"path": "a.py"}}
         ],
+        "finish_reason": "stop",
     }
 
 

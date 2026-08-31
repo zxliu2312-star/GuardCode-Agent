@@ -191,9 +191,11 @@ def load_config(
     加载顺序（后面的覆盖前面的）：
     1. 默认配置
     2. 全局配置文件 (~/.guardcode/config.json)
-    3. 项目配置文件 ({workspace}/.guardcode.json)
-    4. 命令行指定的配置文件
-    5. 环境变量
+    3. 环境变量
+    4. 项目配置文件 ({workspace}/.guardcode.json)
+    5. 命令行指定的配置文件
+    
+    JSON 配置文件优先于环境变量，方便项目级定制化。
     
     Args:
         config_file: 命令行指定的配置文件路径
@@ -211,22 +213,22 @@ def load_config(
         global_config = load_config_from_file(global_config_path)
         config_dict = merge_configs(config_dict, global_config)
     
-    # 3. 项目配置
+    # 3. 环境变量（优先级低于 JSON 配置文件）
+    config_dict = apply_env_overrides(config_dict)
+    
+    # 4. 项目配置（覆盖环境变量，支持项目级定制化）
     if workspace:
         project_config_path = Path(workspace) / '.guardcode.json'
         if project_config_path.exists():
             project_config = load_config_from_file(project_config_path)
             config_dict = merge_configs(config_dict, project_config)
     
-    # 4. 命令行指定的配置文件
+    # 5. 命令行指定的配置文件（最高优先级）
     if config_file:
         user_config_path = Path(config_file)
         if user_config_path.exists():
             user_config = load_config_from_file(user_config_path)
             config_dict = merge_configs(config_dict, user_config)
-    
-    # 5. 环境变量覆盖
-    config_dict = apply_env_overrides(config_dict)
     
     # 转换为 Config 对象
     return dict_to_config(config_dict)

@@ -10,6 +10,7 @@
 
 import os
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -29,6 +30,7 @@ def workspace(tmp_path):
     ws = tmp_path / "ws"
     ws.mkdir()
     config = load_config(workspace=str(ws))
+    config.workspace = str(ws)  # 确保用临时目录，不被 .guardcode.json 覆盖
     yield config
     # 清理
     if ws.exists():
@@ -45,7 +47,7 @@ def test_task1_create_file(workspace):
     assert isinstance(result, str)
 
     # 验证文件确实被创建了
-    hello_file = workspace.workspace / "hello.txt"
+    hello_file = Path(workspace.workspace) / "hello.txt"
     assert hello_file.exists(), "hello.txt was not created"
     assert "Hello World" in hello_file.read_text(encoding="utf-8")
 
@@ -60,7 +62,7 @@ def test_task2_write_fibonacci(workspace):
     assert isinstance(result, str)
 
     # 验证文件被创建且包含函数定义
-    fib_file = workspace.workspace / "fib.py"
+    fib_file = Path(workspace.workspace) / "fib.py"
     assert fib_file.exists(), "fib.py was not created"
     content = fib_file.read_text(encoding="utf-8")
     assert "def " in content, "No function definition found in fib.py"
@@ -70,9 +72,10 @@ def test_task2_write_fibonacci(workspace):
 def test_task3_list_files(workspace):
     """验收任务 3：列出当前目录的 Python 文件。"""
     # 先创建几个文件
-    (workspace.workspace / "a.py").write_text("# a", encoding="utf-8")
-    (workspace.workspace / "b.py").write_text("# b", encoding="utf-8")
-    (workspace.workspace / "c.txt").write_text("c", encoding="utf-8")
+    ws_path = Path(workspace.workspace)
+    (ws_path / "a.py").write_text("# a", encoding="utf-8")
+    (ws_path / "b.py").write_text("# b", encoding="utf-8")
+    (ws_path / "c.txt").write_text("c", encoding="utf-8")
 
     result = run_agent_loop(
         "list all Python files in current directory",

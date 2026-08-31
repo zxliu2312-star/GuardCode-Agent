@@ -129,7 +129,7 @@ class TestAgentLoop:
         assert result == "The file contains: Hello World"
         assert mock_call.call_count == 2
         assert mock_execute.call_count == 1
-        mock_execute.assert_called_once_with("read_file", {"path": "test.txt"})
+        mock_execute.assert_called_once_with("read_file", {"path": "test.txt"}, config=config)
 
     @patch('guardcode.agent.call_model')
     @patch('guardcode.agent.execute_tool')
