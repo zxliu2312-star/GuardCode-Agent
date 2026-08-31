@@ -63,8 +63,8 @@ guardcode/
 │   └── code_scanner.py      # 代码静态扫描
 ├── context/
 │   ├── __init__.py
-│   ├── manager.py           # 上下文大小估算
-│   └── compressor.py       # 逐轮上下文压缩
+│   ├── manager.py           # 上下文管理
+│   └── summarizer.py        # 历史摘要
 ├── ui/
 │   ├── __init__.py
 │   └── console.py           # Rich 输出
@@ -264,62 +264,44 @@ def run_agent_loop(task: str, max_iterations: int = 5):
 
 ### 4.5 上下文管理
 
-#### 4.5.1 逐轮压缩机制
-**设计理念**：类似人类工作记忆——每轮工具调用完成后立即压缩非最近一轮的工具消息，保留操作语义（做了什么、结果如何），丢弃冗余内容（完整文件内容、长输出）。模型需要具体内容时可重新调 read_file。
-
+#### 4.5.1 三层结构
 ```python
-def compress_round(messages: list, keep_recent: int = 2) -> list:
-    """每轮工具调用后，压缩非最近 keep_recent 轮的工具消息。
+def compress_history(messages: list) -> list:
+    permanent = messages[0:2]   # system + 第一条 user（任务描述）
+    recent = messages[-K:]       # 最近 K 条完整保留（默认 10）
+    middle = messages[2:-K]      # 中间部分压缩
     
-    压缩规则（纯规则，无需额外模型调用）：
-    - assistant 消息 with tool_calls：
-      - 保留工具名
-      - 保留关键参数摘要（path, command 前 100 字符）
-      - 丢弃大体积参数（write_file 的 content 全文）
-    - tool role 消息：
-      - 保留 success/error 状态
-      - 保留结果摘要（前 200 字符）
-      - 丢弃完整结果内容（read_file 返回的全文）
-    - 非工具消息（system/user/纯文本 assistant）：不压缩
-    - 已标记 _compressed 的消息：跳过（避免重复压缩）
-    """
+    if len(middle) > 0:
+        try:
+            summary = call_model_for_summary(middle)
+            compressed = [{
+                "role": "system",
+                "content": f"[Earlier conversation summary]: {summary}"
+            }]
+        except Exception:
+            # 摘要失败兜底
+            compressed = [{
+                "role": "system",
+                "content": f"[截断 {len(middle)} 条消息，摘要失败]"
+            }]
+    else:
+        compressed = []
+    
+    return permanent + compressed + recent
 ```
 
-#### 4.5.2 压缩示例
-```
-压缩前（assistant 消息）:
-  {"role": "assistant", "tool_calls": [
-    {"id": "1", "name": "write_file", "arguments": {"path": "app.py", "content": "...500行代码..."}}
-  ]}
-
-压缩后:
-  {"role": "assistant", "tool_calls": [
-    {"id": "1", "name": "write_file", "arguments": {"path": "app.py", "content": "[compressed: 5000 chars]"}}
-  ], "_compressed": true}
-
-压缩前（tool 消息）:
-  {"role": "tool", "tool_call_id": "1", "content": "{\"success\": true, \"result\": \"...3000行文件内容...\"}"}
-
-压缩后:
-  {"role": "tool", "tool_call_id": "1", "content": "{\"success\": true, \"result\": \"[compressed: 30000 chars]\"}", "_compressed": true}
-```
-
-#### 4.5.3 集成到 Agent Loop
+#### 4.5.2 触发条件
 ```python
-# 在 agent.py 的工具执行循环结束后
-from .context.compressor import compress_round
-
-# 每轮工具调用完成后立即压缩
-messages = compress_round(messages, keep_recent=2)
-# 保留最近 2 轮工具消息完整，压缩更早的
+def should_compress(messages: list) -> bool:
+    total_chars = sum(len(json.dumps(msg)) for msg in messages)
+    # 对于 128K token 模型，约 409600 字符（粗略估算）
+    return total_chars > MAX_CONTEXT_CHARS * 0.8
 ```
 
-#### 4.5.4 兜底策略
-极端长对话场景下，即使逐轮压缩后仍可能超出上下文窗口。此时触发 `should_compress()` 阈值，对已压缩消息再做截断：
-```python
-if should_compress(messages, threshold=config.context.max_context_size):
-    # 对已压缩消息做最终截断
-    messages = truncate_compressed(messages, keep_recent=config.context.keep_recent_messages)
+#### 4.5.3 摘要 Prompt
+```
+Summarize the following conversation history in 2-3 sentences, 
+focusing on: completed tasks, current progress, and key decisions.
 ```
 
 ---

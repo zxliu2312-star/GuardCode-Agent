@@ -15,8 +15,6 @@ from .config import Config, load_config
 from .model import call_model
 from .tools.base import execute_tool, get_tool_schemas
 from .workspace import init_workspace
-from .context.compressor import compress_round, truncate_compressed
-from .context.manager import should_compress
 
 # 确保工具被注册（import 即触发 @register_tool 装饰器）
 from .tools import file_tools       # noqa: F401
@@ -257,18 +255,6 @@ def run_agent_loop(
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 _print_verbose("Too many consecutive failures.", config)
                 return "Agent stopped: too many consecutive failures."
-
-        # 逐轮上下文压缩：保留最近 2 轮工具消息完整，压缩更早的
-        messages = compress_round(messages, keep_recent=2)
-
-        # 兜底：极端长对话下逐轮压缩仍不够，做最终截断
-        if should_compress(messages, threshold=config.context.max_context_size):
-            messages = truncate_compressed(
-                messages, keep_recent=config.context.keep_recent_messages
-            )
-            _print_verbose(
-                f"Context truncated to {len(messages)} messages", config
-            )
 
         _print_verbose(f"Iteration {iteration} complete.", config)
 

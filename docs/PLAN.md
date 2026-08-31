@@ -107,51 +107,29 @@ guardcode/
 
 ### Phase 3：智能化（1-2 天）
 
-**目标**：实现逐轮上下文压缩和测试驱动修复引导。
+**目标**：实现上下文压缩和测试驱动修复引导。
 
-#### 3.1 上下文估算
+#### 3.1 上下文压缩实现
 - 字符计数估算：sum(len(json.dumps(msg)) for msg in messages)
-- 阈值判断：should_compress() 比较总字符数与阈值
-- 已完成：context/manager.py
+- 三层结构：永久（system + 第一条 user）+ 压缩（中间摘要）+ 完整（最近 10 条）
+- 摘要调用：使用 gpt-3.5-turbo 生成 2-3 句话摘要
+- 兜底策略：摘要失败则直接截断 + 标记
 
-#### 3.2 逐轮压缩器
-**设计理念**：类似人类工作记忆——每轮工具调用完成后立即压缩非最近一轮的工具消息，保留操作语义（做了什么、结果如何），丢弃冗余内容（完整文件内容、长输出）。
-
-- 实现 `context/compressor.py`
-  - `compress_tool_message(message: dict) -> dict`：压缩单条工具消息
-    - 识别 assistant 消息中的 tool_calls，保留工具名和关键参数摘要
-    - 识别 tool role 消息，保留 success/error 状态和结果摘要
-    - 丢弃：完整文件内容（write_file 的 content 参数、read_file 的返回内容）
-    - 保留：操作语义（调用了什么工具、操作了什么文件、成功/失败）
-  - `compress_round(messages: list, keep_recent: int = 2) -> list`
-    - 保留最近 `keep_recent` 轮工具消息不压缩
-    - 对更早的工具消息逐条调用 `compress_tool_message()`
-    - 非工具消息（system/user/无 tool_calls 的 assistant）不压缩
-  - 压缩标记：压缩后的消息添加 `"_compressed": true` 字段，避免重复压缩
-  - 无需额外模型调用：纯规则压缩，零成本零延迟
-
-#### 3.3 集成到 Agent Loop
-- 修改 `run_agent_loop()`
-  - 每轮工具调用完成后，调用 `compress_round()`
-  - 保留最近 2 轮工具消息完整，压缩更早的
-  - 打印压缩提示（可选）
-- 兜底策略：如果 should_compress() 仍触发（极端长对话），对已压缩消息再做截断
-
-#### 3.4 System Prompt 优化
+#### 3.2 System Prompt 优化
 编写完整的 system prompt：
 - Agent 角色定位
 - 工具使用说明
 - 测试驱动开发流程指引
 - 安全注意事项
 
-#### 3.5 迭代终止条件完善
+#### 3.3 迭代终止条件完善
 - 最大迭代次数：--max-iterations 配置
 - 循环检测：连续两轮无工具调用或工具调用相同
 - 测试通过：run_command 返回 exit code 0
 
-#### 3.6 验收标准
+#### 3.4 验收标准
 测试任务：
-- 多轮工具调用后观察压缩效果（上下文不再线性增长）
+- 长对话触发压缩
 - 测试驱动修复（发现测试 → 修改代码 → 运行测试 → 修复）
 - TDD 流程（先写测试，再写实现）
 
@@ -236,7 +214,7 @@ def run_command(command: str, timeout: int = 30) -> dict:
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
 | 模型调用超时/失败 | Agent 无法工作 | 实现重试机制，指数退避 |
-| 上下文窗口溢出 | 长对话无法继续 | 逐轮即时压缩 + 阈值兜底截断 |
+| 上下文窗口溢出 | 长对话无法继续 | 三层压缩，字符估算触发 |
 | 路径遍历攻击 | 访问 workspace 外文件 | resolve() + is_relative_to() 严格校验 |
 | 命令注入 | 执行恶意命令 | 风险分级 + 用户确认 |
 | 代码注入 | 写入恶意代码 | 静态扫描 + 警告确认 |
@@ -248,7 +226,7 @@ def run_command(command: str, timeout: int = 30) -> dict:
 ### 6.1 单元测试
 - tests/test_tools.py：测试每个工具的基础功能
 - tests/test_security.py：测试风险分级逻辑
-- tests/test_context.py：测试上下文压缩逻辑（逐轮压缩器 + 估算）
+- tests/test_context.py：测试上下文压缩逻辑
 - 使用 pytest + unittest.mock
 
 ### 6.2 集成测试
