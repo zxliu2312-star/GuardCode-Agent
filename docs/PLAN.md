@@ -127,11 +127,11 @@ guardcode/
 - **Layer 2: Context**（messages 列表，易失性记忆）— 可压缩
 - **Layer 3: Workspace**（文件系统，Source of Truth）— read_file 每次直接读磁盘
 
-四条压缩规则：
-1. **写后失效**：write_file/delete_file 后，同路径的旧 read_file 结果标记为过期
-2. **按需重读**：大型 result 压缩为元信息 `<content: N chars>`，模型需要时可重新 read_file
-3. **压缩大型 tool_calls**：assistant 消息中 write_file 的大型 content 参数压缩为占位符
-4. **工作集保留**：最近 N 轮（默认 5）完整保留，不压缩
+四条压缩规则（两类触发机制）：
+1. **写后失效（事件驱动）**：write_file/delete_file 成功后立即失效同路径旧 read_file，不等阈值
+2. **按需重读（阈值驱动）**：大型 result 压缩为元信息 `<content: N chars>`，模型需要时可重新 read_file
+3. **压缩大型 tool_calls（阈值驱动）**：assistant 消息中 write_file 的大型 content 参数压缩为占位符
+4. **工作集保留（阈值驱动）**：最近 N 轮（默认 5）完整保留，不压缩
 
 前置修改：
 - 修改 `_format_tool_result()` 增加 `tool_name` 参数，在 content 中记录 `_tool_name` 和规范化路径
@@ -143,7 +143,8 @@ guardcode/
 - Phase 1 默认关闭
 
 #### 3.4 集成到 Agent Loop
-- 压缩时机：下一轮调用模型前检查 should_compress()
+- 事件驱动失效：写/删成功后立即调用 `_invalidate_outdated_reads()`，不等阈值
+- 阈值驱动压缩：下一轮调用模型前检查 should_compress()
 - 当前轮的 response["tool_calls"] 已独立提取，不受压缩影响
 - 压缩只修改内存中的 messages，不触碰 Workspace
 

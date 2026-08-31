@@ -16,7 +16,7 @@ from .config import Config, load_config
 from .model import call_model
 from .tools.base import execute_tool, get_tool_schemas
 from .workspace import init_workspace
-from .context import should_compress, compress_history
+from .context import should_compress, compress_history, _invalidate_outdated_reads
 
 # 确保工具被注册（import 即触发 @register_tool 装饰器）
 from .tools import file_tools       # noqa: F401
@@ -283,6 +283,33 @@ def run_agent_loop(
 
             # 将工具结果加入消息历史（含工具元信息，供压缩器使用）
             messages.append(_format_tool_result(tool_id, tool_name, result, tool_args))
+
+            # 事件驱动失效：写/删成功后立即失效旧读取结果
+            # 不等阈值触发，因为文件被修改的那一刻旧内容就已过期
+            if tool_name in ("write_file", "delete_file") and result["success"]:
+                file_path = tool_args.get("path", "")
+                if file_path:
+                    normalized = Path(file_path).as_posix()
+                    before = sum(
+                        len(m.get("content", "")) for m in messages
+                        if m.get("role") == "tool"
+                    )
+                    messages = _invalidate_outdated_reads(messages, {normalized})
+                    after = sum(
+                        len(m.get("content", "")) for m in messages
+                        if m.get("role") == "tool"
+                    )
+                    if before != after:
+                        _print_verbose(
+                            f"Write invalidation: invalidated old reads "
+                            f"for {normalized} ({before} -> {after} chars)",
+                            config,
+                        )
+                        _log_to_file(
+                            f"[Iteration {iteration}] Write invalidation: "
+                            f"{normalized} ({before} -> {after} chars)",
+                            config,
+                        )
 
             # 连续失败计数
             if not result["success"]:

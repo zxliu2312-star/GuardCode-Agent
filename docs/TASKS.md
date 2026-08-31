@@ -235,11 +235,12 @@
   - [ ] 异常处理：返回兜底消息 `[Summarization failed]`
 
 ### 3.5 集成到 Agent Loop
-- [ ] 修改 `run_agent_loop()`
-  - [ ] 在主循环开始前（调用模型前）检查 `should_compress()`
-  - [ ] 如果需要压缩，调用 `compress_history()`
-  - [ ] 打印压缩提示（压缩了多少消息，释放了多少空间）
-  - [ ] 确认当前轮的 `response["tool_calls"]` 已独立提取，不受压缩影响
+- [x] 修改 `run_agent_loop()`
+  - [x] 阈值驱动：在主循环开始前（调用模型前）检查 `should_compress()`
+  - [x] 如果需要压缩，调用 `compress_history()`
+  - [x] 打印压缩提示（压缩了多少消息，释放了多少空间）
+  - [x] 事件驱动：写/删成功后立即调用 `_invalidate_outdated_reads()`
+  - [x] 确认当前轮的 `response["tool_calls"]` 已独立提取，不受压缩影响
 
 ### 3.6 System Prompt 优化
 - [ ] 编写完整的 System Prompt
@@ -373,15 +374,20 @@
   - [ ] 测试配置规则：always_block、auto_approve
 
 ### 上下文测试
-- [ ] `tests/test_context_compressor.py`
-  - [ ] 测试写后失效：write_file 后旧 read_file 结果被标记过期
-  - [ ] 测试路径规范化匹配：`./src/main.py` vs `src/main.py`
-  - [ ] 测试按需重读：大型 result 被压缩为 `<content: N chars>`
-  - [ ] 测试压缩大型 tool_calls：write_file 的 content 参数被压缩
-  - [ ] 测试工作集保留：最近 N 条消息完整保留
-  - [ ] 测试幂等性：已压缩消息不重复压缩
-  - [ ] 测试 `compress_history`：分区逻辑、边界情况
-  - [ ] 测试 `estimate_context_size` 和 `should_compress`
+- [x] `tests/test_context_compressor.py`
+  - [x] 测试写后失效：write_file 后旧 read_file 结果被标记过期
+  - [x] 测试路径规范化匹配：`./src/main.py` vs `src/main.py`
+  - [x] 测试按需重读：大型 result 被压缩为 `<content: N chars>`
+  - [x] 测试压缩大型 tool_calls：write_file 的 content 参数被压缩
+  - [x] 测试工作集保留：最近 N 条消息完整保留
+  - [x] 测试幂等性：已压缩消息不重复压缩
+  - [x] 测试 `compress_history`：分区逻辑、边界情况
+  - [x] 测试 `estimate_context_size` 和 `should_compress`
+- [ ] `tests/test_agent.py`：事件驱动失效集成测试
+  - [ ] write_file 成功后立即失效旧 read_file（不等阈值）
+  - [ ] delete_file 成功后立即失效旧 read_file
+  - [ ] 失败的 write_file 不触发失效
+  - [ ] 无旧读取时无副作用
 
 ---
 

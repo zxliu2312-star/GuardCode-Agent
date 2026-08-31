@@ -334,9 +334,11 @@ def compress_history(messages, keep_recent=5, use_llm_summary=False):
     return permanent + compressed_middle + recent
 ```
 
-**规则 1：写后失效（Write/Delete Invalidation）**
+**规则 1：写后失效（Write/Delete Invalidation）— 事件驱动**
 
-当文件被 `write_file` 或 `delete_file` 修改后，自动将该文件之前的所有 `read_file` 结果标记为过期：
+当文件被 `write_file` 或 `delete_file` 修改后，自动将该文件之前的所有 `read_file` 结果标记为过期。
+
+**与规则 2-4 不同，写后失效是事件驱动的**：在写/删操作成功后立即执行，不等阈值触发。因为文件被修改的那一刻旧内容就已过期，延迟清理只会浪费 token。
 
 ```python
 # 原始 read_file 结果
@@ -445,10 +447,13 @@ def should_compress(messages: list) -> bool:
 ```
 
 #### 4.5.4 压缩时机
+
+压缩分为两类：**事件驱动**（写后失效）和**阈值驱动**（按需重读、压缩大型 tool_calls、工作集保留）。
+
 ```python
 # agent.py 主循环
 while iteration < max_iterations:
-    # ✅ 在调用模型前检查并压缩
+    # ✅ 阈值驱动：在调用模型前检查并压缩
     if should_compress(messages):
         messages = compress_history(messages, keep_recent=config.context.keep_recent_messages)
     
@@ -462,14 +467,28 @@ while iteration < max_iterations:
     # 执行工具（使用独立的 tool_calls，不受压缩影响）
     for tc in tool_calls:
         result = execute_tool(tc["name"], tc["arguments"], config)
-        messages.append(_format_tool_result(tc["id"], tc["name"], result))
+        messages.append(_format_tool_result(tc["id"], tc["name"], result, tc["arguments"]))
+        
+        # ✅ 事件驱动：写/删成功后立即失效旧读取结果
+        # 不等阈值触发，因为文件被修改的那一刻旧内容就已过期
+        if tc["name"] in ("write_file", "delete_file") and result["success"]:
+            path = Path(tc["arguments"].get("path", "")).as_posix()
+            if path:
+                messages = _invalidate_outdated_reads(messages, {path})
 ```
 
+**两类压缩的分工**：
+
+| 类型 | 触发条件 | 规则 | 目的 |
+|------|---------|------|------|
+| 事件驱动 | 写/删操作成功后立即 | 写后失效 | 语义失效，防止模型用过期内容 |
+| 阈值驱动 | `should_compress()` 返回 True | 按需重读、压缩大型 tool_calls、工作集保留 | 体积压缩，释放上下文空间 |
+
 **关键保证**：
-- 压缩发生在下一轮开始前
+- 事件驱动失效只修改内存中的 `messages`，不触碰 Workspace
+- 阈值驱动压缩发生在下一轮开始前
 - 当前轮的 `response["tool_calls"]` 已经提取完毕，独立存储
-- 压缩不影响当前轮的工具执行
-- 压缩只修改内存中的 `messages`，不触碰 Workspace
+- 两类压缩都不影响当前轮的工具执行
 
 #### 4.5.5 幂等性保证
 

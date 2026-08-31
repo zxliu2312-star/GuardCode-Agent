@@ -398,5 +398,200 @@ class TestAgentLoop:
         assert mock_execute.call_count == 2
 
 
+class TestEventDrivenInvalidation:
+    """测试事件驱动写后失效（不等阈值触发）"""
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_write_invalidates_old_read_immediately(
+        self, mock_init_ws, mock_execute, mock_call
+    ):
+        """write_file 成功后立即失效旧 read_file 结果"""
+        mock_call.side_effect = [
+            # 第一次：读取文件
+            {
+                "content": "Reading file...",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "name": "read_file",
+                    "arguments": {"path": "main.py"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            # 第二次：写入文件（触发失效）
+            {
+                "content": "Modifying file...",
+                "tool_calls": [{
+                    "id": "call_2",
+                    "name": "write_file",
+                    "arguments": {"path": "main.py", "content": "new content"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            # 第三次：完成
+            {
+                "content": "Done.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            },
+        ]
+        mock_execute.side_effect = [
+            {"success": True, "result": "old file content", "error": ""},
+            {"success": True, "result": "Successfully wrote to main.py", "error": ""},
+        ]
+
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read and modify main.py", config=config, max_iterations=10)
+
+        assert result == "Done."
+        # 第三次调用模型时，messages 中的旧 read_file 应已被失效
+        third_call_messages = mock_call.call_args_list[2][0][0]
+        for msg in third_call_messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id") == "call_1":
+                content = json.loads(msg["content"])
+                assert content.get("compressed") is True
+                assert "modified later" in content["result"]
+                break
+        else:
+            pytest.fail("Old read_file result not found in messages")
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_delete_invalidates_old_read_immediately(
+        self, mock_init_ws, mock_execute, mock_call
+    ):
+        """delete_file 成功后立即失效旧 read_file 结果"""
+        mock_call.side_effect = [
+            {
+                "content": "Reading...",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "name": "read_file",
+                    "arguments": {"path": "temp.py"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Deleting...",
+                "tool_calls": [{
+                    "id": "call_2",
+                    "name": "delete_file",
+                    "arguments": {"path": "temp.py"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Done.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            },
+        ]
+        mock_execute.side_effect = [
+            {"success": True, "result": "temp content", "error": ""},
+            {"success": True, "result": "Successfully deleted temp.py", "error": ""},
+        ]
+
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read and delete temp.py", config=config, max_iterations=10)
+
+        assert result == "Done."
+        third_call_messages = mock_call.call_args_list[2][0][0]
+        for msg in third_call_messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id") == "call_1":
+                content = json.loads(msg["content"])
+                assert content.get("compressed") is True
+                assert "modified later" in content["result"]
+                break
+        else:
+            pytest.fail("Old read_file result not found in messages")
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_failed_write_does_not_invalidate(
+        self, mock_init_ws, mock_execute, mock_call
+    ):
+        """失败的 write_file 不触发失效"""
+        mock_call.side_effect = [
+            {
+                "content": "Reading...",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "name": "read_file",
+                    "arguments": {"path": "main.py"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Writing...",
+                "tool_calls": [{
+                    "id": "call_2",
+                    "name": "write_file",
+                    "arguments": {"path": "main.py", "content": "new"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Done.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            },
+        ]
+        mock_execute.side_effect = [
+            {"success": True, "result": "old content", "error": ""},
+            {"success": False, "result": "", "error": "Permission denied"},
+        ]
+
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read and try to write main.py", config=config, max_iterations=10)
+
+        assert result == "Done."
+        # 第三次调用模型时，旧 read_file 应保持不变（未被失效）
+        third_call_messages = mock_call.call_args_list[2][0][0]
+        for msg in third_call_messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id") == "call_1":
+                content = json.loads(msg["content"])
+                assert "compressed" not in content
+                assert content["result"] == "old content"
+                break
+        else:
+            pytest.fail("Old read_file result not found in messages")
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_write_without_prior_read_no_side_effect(
+        self, mock_init_ws, mock_execute, mock_call
+    ):
+        """无旧读取时，write_file 不产生副作用"""
+        mock_call.side_effect = [
+            {
+                "content": "Writing...",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "name": "write_file",
+                    "arguments": {"path": "new.py", "content": "hello"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Done.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            },
+        ]
+        mock_execute.side_effect = [
+            {"success": True, "result": "Successfully wrote to new.py", "error": ""},
+        ]
+
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Create new.py", config=config, max_iterations=10)
+
+        assert result == "Done."
+        assert mock_execute.call_count == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
