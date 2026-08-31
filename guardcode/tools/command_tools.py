@@ -66,3 +66,4 @@ def run_command(command: str, timeout: int = 30) -> dict[str, Any]:
         "error": completed.stderr,
         "exit_code": completed.returncode,
     }
+

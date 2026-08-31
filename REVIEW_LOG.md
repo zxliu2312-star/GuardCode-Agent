@@ -94,3 +94,32 @@
 - **用户意见**：前端完全交给 AI 生成，以能用正确为核心目标，完全没问题
 - **讨论结论**：用户正确，核心逻辑已全部就绪，前端只是 UI 层，AI 生成半天到一天足够
 - **最终修改**：调整评估，开始规划 Web 前端实现
+
+---
+
+## 9. 上下文压缩：从逐轮压缩到两级架构
+
+- **类型**：架构重构
+- **时间**：Phase 3 - 3.2 设计阶段
+- **问题**：助手第一版实现"逐轮压缩"（每轮工具执行后都压缩），理解有偏差：
+  - 缺少写后失效（Write Invalidation）——核心功能缺失
+  - 缺少按需重读（Lazy Re-reading）——只做了简单截断
+  - 压缩时机错误——每轮后压缩而非阈值触发
+  - 没有三层架构概念（Execution State / Context / Workspace）
+  - 没有修改 `_format_tool_result()` 增加工具元信息
+  - 压缩标记用内容字符串检测而非 `"compressed": True` 字段
+- **原始方案**：逐轮即时压缩，纯规则，每轮后调用 `compress_round()`
+- **用户意见**：提供完整的 Phase 1 架构审查文档，明确三层架构和两级压缩设计
+- **讨论结论**：采用用户的架构设计：
+  - 三层架构：Execution State（不可压缩）→ Context/messages（易失性记忆）→ Workspace（Source of Truth）
+  - 两级压缩：Level 1 规则压缩（写后失效 + 按需重读 + 工作集保留）+ Level 2 LLM 摘要（可选）
+  - 压缩时机：下一轮调用模型前检查 `should_compress()` 阈值触发
+  - 前置修改：`_format_tool_result()` 增加 `tool_name` 参数和规范化路径
+  - 无 File Cache 层：依赖操作系统页缓存
+  - 幂等性：content JSON 中 `"compressed": True` 标记
+- **最终修改**：
+  - 用 `git revert` 回退第一版实现（保留完整提交历史）
+  - 重写 PLAN.md Phase 3 为两级压缩架构
+  - 重写 TASKS.md Phase 3 任务清单（3.2 前置修改 → 3.3 Level 1 → 3.4 Level 2 → 3.5 集成）
+  - 重写 SPEC.md 4.5 节（修复编码 + 三层架构 + 两级压缩 + 6 个子节）
+  - SPEC.md 目录结构 `summarizer.py` → `compressor.py`

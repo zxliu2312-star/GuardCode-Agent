@@ -63,13 +63,45 @@ guardcode/
 │   └── code_scanner.py      # 代码静态扫描
 ├── context/
 │   ├── __init__.py
-│   ├── manager.py           # 上下文管理
-│   └── summarizer.py        # 历史摘要
+│   ├── manager.py           # 上下文大小估算
+│   └── compressor.py        # 两级上下文压缩
 ├── ui/
 │   ├── __init__.py
 │   └── console.py           # Rich 输出
 └── config.py                # 配置管理
 ```
+
+### 3.3 三层架构
+```
+┌──────────────────────────────────────────────────┐
+│ Layer 1: Execution State (Current Turn)          │
+│ - response["tool_calls"] ← 执行来源              │
+│ - 绝对不可压缩                                    │
+│ - ✅ 当前已正确实现                               │
+└──────────────────────────────────────────────────┘
+                    ↓ 执行完成后
+┌──────────────────────────────────────────────────┐
+│ Layer 2: Context (messages list)                 │
+│ - 对话历史（易失性记忆）                          │
+│ - 可压缩策略：                                    │
+│   ✓ 写后失效：write_file 后旧 read_file 失效     │
+│   ✓ 按需重读：旧 read_file 压缩为元信息          │
+│   ✓ 保留工作集：最近 N 轮完整保留                 │
+│   ✓ 两级压缩：规则压缩 + LLM 摘要（可选）         │
+└──────────────────────────────────────────────────┘
+                    ↓ Source of Truth
+┌──────────────────────────────────────────────────┐
+│ Layer 3: Workspace (file system)                 │
+│ - 真实文件内容                                    │
+│ - ✅ 已正确实现                                   │
+│ - read_file 每次直接读磁盘                        │
+└──────────────────────────────────────────────────┘
+```
+
+关键决策：
+- **无 File Cache 层**：避免一致性问题，依赖操作系统页缓存
+- **read_file 每次直接读磁盘**：依赖操作系统页缓存自动优化
+- **压缩只修改内存中的 messages**：不触碰 Workspace
 
 ---
 
@@ -222,36 +254,34 @@ def run_agent_loop(task: str, max_iterations: int = 5):
     
     iteration = 0
     while iteration < max_iterations:
-        # 1. 上下文压缩
+        # 1. 上下文压缩（下一轮开始前）
         if should_compress(messages):
-            messages = compress_history(messages)
+            messages = compress_history(messages, keep_recent=5)
         
         # 2. 调用模型
         response = call_model(messages)
-        messages.append(to_message(response))
         
-        # 3. 无工具调用 → 任务完成
-        if not response.tool_calls:
-            print_final_response(response.content)
+        # 3. Execution State 独立提取
+        tool_calls = response["tool_calls"]
+        messages.append(_format_assistant_message(response))
+        
+        # 4. 无工具调用 → 任务完成
+        if not tool_calls:
+            print_final_response(response["content"])
             break
         
-        # 4. 执行所有工具调用
-        tool_results = []
-        for tool_call in response.tool_calls:
-            result = execute_tool_with_safety(tool_call)
-            tool_results.append(to_tool_message(tool_call, result))
+        # 5. 执行所有工具调用（使用独立的 tool_calls，不受压缩影响）
+        for tc in tool_calls:
+            result = execute_tool_with_safety(tc)
+            messages.append(_format_tool_result(tc["id"], tc["name"], result))
         
-        messages.extend(tool_results)
         iteration += 1
-    
-    if iteration >= max_iterations:
-        print_warning(f"达到最大迭代次数 {max_iterations}")
 ```
 
 #### 4.4.2 终止条件
 - 模型不再发起工具调用
 - 达到最大迭代次数（默认 5）
-- 用户手动中止（Ctrl+C）
+- 用户手动中断（Ctrl+C）
 
 #### 4.4.3 多轮工具调用
 模型在一次响应中可以返回多个 `tool_calls`，Agent 依次执行：
@@ -264,44 +294,225 @@ def run_agent_loop(task: str, max_iterations: int = 5):
 
 ### 4.5 上下文管理
 
-#### 4.5.1 三层结构
+#### 4.5.1 设计原则
+- **Workspace 是 Source of Truth**：文件系统为准，read_file 每次直接读磁盘
+- **历史是易失性记忆**：messages 列表可压缩，不保留冗余内容
+- **重新读取优于大上下文**：模型需要具体内容时可重新调 read_file
+
+#### 4.5.2 两级压缩架构
+
+**Level 1: 规则压缩（Rule-Based Compression，必须）**
+
+分区结构：
 ```python
-def compress_history(messages: list) -> list:
-    permanent = messages[0:2]   # system + 第一条 user（任务描述）
-    recent = messages[-K:]       # 最近 K 条完整保留（默认 10）
-    middle = messages[2:-K]      # 中间部分压缩
+def compress_history(messages, keep_recent=5, use_llm_summary=False):
+    # 分区
+    permanent = messages[0:2]  # system prompt + 第一条 user task
+    middle = messages[2:-keep_recent]  # 可压缩的中间区
+    recent = messages[-keep_recent:]  # 工作集：最近 N 条完整保留
     
-    if len(middle) > 0:
-        try:
-            summary = call_model_for_summary(middle)
-            compressed = [{
-                "role": "system",
-                "content": f"[Earlier conversation summary]: {summary}"
-            }]
-        except Exception:
-            # 摘要失败兜底
-            compressed = [{
-                "role": "system",
-                "content": f"[截断 {len(middle)} 条消息，摘要失败]"
-            }]
-    else:
-        compressed = []
+    if not middle:
+        return messages
     
-    return permanent + compressed + recent
+    # Level 1 规则压缩
+    compressed_middle = middle
+    compressed_middle = _invalidate_outdated_reads(compressed_middle)
+    compressed_middle = _compress_large_results(compressed_middle)
+    compressed_middle = _compress_tool_call_arguments(compressed_middle)
+    
+    # Level 2（可选）：如果压缩率不足
+    if use_llm_summary:
+        original_size = estimate_context_size(middle)
+        compressed_size = estimate_context_size(compressed_middle)
+        if original_size > 0 and compressed_size / original_size > 0.5:
+            summary = _summarize_with_llm(compressed_middle)
+            compressed_middle = [{
+                "role": "user",
+                "content": f"[Previous conversation summary]: {summary}"
+            }]
+    
+    return permanent + compressed_middle + recent
 ```
 
-#### 4.5.2 触发条件
+**规则 1：写后失效（Write/Delete Invalidation）**
+
+当文件被 `write_file` 或 `delete_file` 修改后，自动将该文件之前的所有 `read_file` 结果标记为过期：
+
+```python
+# 原始 read_file 结果
+{
+    "success": True,
+    "result": "<50KB 文件内容>",
+    "path": "src/main.py"
+}
+
+# 压缩后（该文件后续被修改）
+{
+    "success": True,
+    "result": "<file src/main.py was modified later, content outdated>",
+    "path": "src/main.py",
+    "compressed": True
+}
+```
+
+**规则 2：按需重读（Lazy Re-reading）**
+
+未被修改的文件，若内容超过阈值（如 500 字符），压缩为元信息：
+
+```python
+# 原始 read_file 结果
+{
+    "success": True,
+    "result": "<大型文件内容>",
+    "error": ""
+}
+
+# 压缩后
+{
+    "success": True,
+    "result": "<content: 12345 chars>",
+    "error": "",
+    "compressed": True
+}
+```
+
+**规则 3：压缩大型 tool_calls**
+
+`assistant` 消息中 `write_file` 的大型 `content` 参数压缩为占位符：
+
+```python
+# 原始 tool_call
+{
+    "id": "call-123",
+    "function": {
+        "name": "write_file",
+        "arguments": '{"path": "app.py", "content": "<10KB 代码>"}'
+    }
+}
+
+# 压缩后
+{
+    "id": "call-123",
+    "function": {
+        "name": "write_file",
+        "arguments": '{"path": "app.py", "content": "<10240 chars>"}'
+    }
+}
+```
+
+**规则 4：工作集保留（Working Set）**
+
+最近 N 轮（默认 5）的消息完整保留，不压缩。这是模型当前正在处理的热数据。
+
+**Level 2: LLM 摘要（Optional Enhancement）**
+
+当 Level 1 规则压缩释放的空间仍不足时，可选调用 LLM 生成摘要：
+
+```python
+# 仅在压缩率不足时启用
+if compressed_size / original_size > 0.5:
+    summary = _summarize_with_llm(compressed_middle)
+    compressed_middle = [{
+        "role": "user",
+        "content": f"[Previous conversation summary]: {summary}"
+    }]
+```
+
+**摘要 Prompt（禁止脑补）**：
+```
+Summarize the following conversation history in 2-3 sentences.
+Focus ONLY on:
+- What tasks were completed
+- What files were read/written
+- What commands were executed
+- Current progress and state
+
+Do NOT add:
+- New suggestions
+- Future plans
+- Unexecuted steps
+```
+
+#### 4.5.3 触发条件
 ```python
 def should_compress(messages: list) -> bool:
+    if len(messages) <= 4:
+        return False
+    
     total_chars = sum(len(json.dumps(msg)) for msg in messages)
     # 对于 128K token 模型，约 409600 字符（粗略估算）
     return total_chars > MAX_CONTEXT_CHARS * 0.8
 ```
 
-#### 4.5.3 摘要 Prompt
+#### 4.5.4 压缩时机
+```python
+# agent.py 主循环
+while iteration < max_iterations:
+    # ✅ 在调用模型前检查并压缩
+    if should_compress(messages):
+        messages = compress_history(messages, keep_recent=config.context.keep_recent_messages)
+    
+    # 调用模型
+    response = call_model(messages)
+    
+    # ✅ Execution State 独立：tool_calls 从 response 提取
+    tool_calls = response["tool_calls"]
+    messages.append(_format_assistant_message(response))
+    
+    # 执行工具（使用独立的 tool_calls，不受压缩影响）
+    for tc in tool_calls:
+        result = execute_tool(tc["name"], tc["arguments"], config)
+        messages.append(_format_tool_result(tc["id"], tc["name"], result))
 ```
-Summarize the following conversation history in 2-3 sentences, 
-focusing on: completed tasks, current progress, and key decisions.
+
+**关键保证**：
+- 压缩发生在下一轮开始前
+- 当前轮的 `response["tool_calls"]` 已经提取完毕，独立存储
+- 压缩不影响当前轮的工具执行
+- 压缩只修改内存中的 `messages`，不触碰 Workspace
+
+#### 4.5.5 幂等性保证
+
+已压缩的消息通过 `"compressed": True` 标记，避免重复压缩：
+
+```python
+def _compress_large_results(messages: list) -> list:
+    compressed = []
+    for msg in messages:
+        if msg["role"] == "tool":
+            content = json.loads(msg["content"])
+            
+            # 跳过已压缩的
+            if content.get("compressed"):
+                compressed.append(msg)
+                continue
+            
+            # 压缩逻辑...
+    
+    return compressed
+```
+
+#### 4.5.6 前置修改：工具结果元信息
+
+当前 tool 消息只有 `tool_call_id` 和 `content`，压缩时需要知道工具名和路径。
+解决方案：修改 `_format_tool_result()` 增加元信息：
+
+```python
+def _format_tool_result(tool_call_id: str, tool_name: str, result: dict) -> dict:
+    """增加 tool_name 参数，在 content 中记录元信息"""
+    content = result.copy()
+    content["_tool_name"] = tool_name  # 增加元信息
+    
+    # 对文件操作工具，记录规范化路径
+    if tool_name in ("read_file", "write_file", "delete_file"):
+        # path 已在 result 中，确保是规范化路径
+        pass
+    
+    return {
+        "role": "tool",
+        "tool_call_id": tool_call_id,
+        "content": json.dumps(content, ensure_ascii=False, default=str),
+    }
 ```
 
 ---
@@ -404,7 +615,7 @@ logging.basicConfig(
     "api_base": "https://api.openai.com/v1",
     "max_iterations": 5,
     "max_context_chars": 409600,
-    "recent_messages_keep": 10,
+    "recent_messages_keep": 5,
     "security": {
         "always_block": [
             "rm -rf /",
@@ -483,7 +694,7 @@ guardcode --workspace ~/projects/myapp --model gpt-4-turbo --max-iterations 8 \
 ### 7.3 用户中断
 - Ctrl+C → 捕获 `KeyboardInterrupt`
 - 保存当前对话历史到 `~/.guardcode/sessions/{timestamp}.json`
-- 打印："任务已中断，对话历史已保存"
+- 打印：任务已中断，对话历史已保存
 - 优雅退出
 
 ---
@@ -534,5 +745,8 @@ guardcode --workspace ~/projects/myapp --model gpt-4-turbo --max-iterations 8 \
 - **Tool Call**：模型发起的工具调用请求
 - **Risk Level**：操作的风险等级（SAFE / DANGEROUS / BLOCKED）
 - **Context Compression**：对话历史压缩，保留关键信息
+- **Write Invalidation**：写后失效，文件被修改后旧读取结果标记过期
+- **Lazy Re-reading**：按需重读，大型结果压缩为元信息，需要时重新读取
+- **Working Set**：工作集，最近 N 轮消息完整保留
 - **Test-Driven Repair**：运行测试 → 分析失败 → 修复代码的循环
 - **Static Code Scan**：对代码内容做正则匹配，检测危险模式

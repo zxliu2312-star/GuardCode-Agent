@@ -80,4 +80,5 @@ def call_model(
     return {
         "content": message.content,
         "tool_calls": _parse_tool_calls(message.tool_calls),
+        "finish_reason": response.choices[0].finish_reason,
     }

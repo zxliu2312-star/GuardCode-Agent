@@ -107,29 +107,62 @@ guardcode/
 
 ### Phase 3：智能化（1-2 天）
 
-**目标**：实现上下文压缩和测试驱动修复引导。
+**目标**：实现两级上下文压缩和测试驱动修复引导。
 
-#### 3.1 上下文压缩实现
+**核心原则**：
+- Workspace 是 Source of Truth（文件系统为准）
+- 历史是易失性记忆（messages 可压缩）
+- 重新读取优于大上下文（read_file 每次直接读磁盘）
+
+#### 3.1 上下文估算（已完成）
 - 字符计数估算：sum(len(json.dumps(msg)) for msg in messages)
-- 三层结构：永久（system + 第一条 user）+ 压缩（中间摘要）+ 完整（最近 10 条）
-- 摘要调用：使用 gpt-3.5-turbo 生成 2-3 句话摘要
-- 兜底策略：摘要失败则直接截断 + 标记
+- 阈值判断：should_compress() 比较总字符数与阈值
+- 已完成：context/manager.py
 
-#### 3.2 System Prompt 优化
+#### 3.2 Context Compression - Level 1（规则压缩，必须）
+**设计理念**：纯规则压缩，无需额外模型调用，零成本零延迟。
+
+三层架构：
+- **Layer 1: Execution State**（当前轮，不可压缩）— response["tool_calls"] 独立提取
+- **Layer 2: Context**（messages 列表，易失性记忆）— 可压缩
+- **Layer 3: Workspace**（文件系统，Source of Truth）— read_file 每次直接读磁盘
+
+四条压缩规则：
+1. **写后失效**：write_file/delete_file 后，同路径的旧 read_file 结果标记为过期
+2. **按需重读**：大型 result 压缩为元信息 `<content: N chars>`，模型需要时可重新 read_file
+3. **压缩大型 tool_calls**：assistant 消息中 write_file 的大型 content 参数压缩为占位符
+4. **工作集保留**：最近 N 轮（默认 5）完整保留，不压缩
+
+前置修改：
+- 修改 `_format_tool_result()` 增加 `tool_name` 参数，在 content 中记录 `_tool_name` 和规范化路径
+
+#### 3.3 Context Compression - Level 2（LLM 摘要，可选）
+- 仅在 Level 1 压缩率不足时启用（压缩后仍 > 原始 50%）
+- 使用较次模型生成 2-3 句话摘要
+- 禁止脑补 Prompt：只记录已执行的操作，不添加未执行的计划
+- Phase 1 默认关闭
+
+#### 3.4 集成到 Agent Loop
+- 压缩时机：下一轮调用模型前检查 should_compress()
+- 当前轮的 response["tool_calls"] 已独立提取，不受压缩影响
+- 压缩只修改内存中的 messages，不触碰 Workspace
+
+#### 3.5 System Prompt 优化
 编写完整的 system prompt：
 - Agent 角色定位
 - 工具使用说明
 - 测试驱动开发流程指引
 - 安全注意事项
 
-#### 3.3 迭代终止条件完善
+#### 3.6 迭代终止条件完善
 - 最大迭代次数：--max-iterations 配置
 - 循环检测：连续两轮无工具调用或工具调用相同
 - 测试通过：run_command 返回 exit code 0
 
-#### 3.4 验收标准
+#### 3.7 验收标准
 测试任务：
-- 长对话触发压缩
+- 长对话触发压缩，任务仍能正确完成
+- 写后失效：write_file 后旧 read_file 结果被标记过期
 - 测试驱动修复（发现测试 → 修改代码 → 运行测试 → 修复）
 - TDD 流程（先写测试，再写实现）
 
@@ -214,7 +247,7 @@ def run_command(command: str, timeout: int = 30) -> dict:
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
 | 模型调用超时/失败 | Agent 无法工作 | 实现重试机制，指数退避 |
-| 上下文窗口溢出 | 长对话无法继续 | 三层压缩，字符估算触发 |
+| 上下文窗口溢出 | 长对话无法继续 | 两级压缩：规则压缩 + LLM 摘要（可选） |
 | 路径遍历攻击 | 访问 workspace 外文件 | resolve() + is_relative_to() 严格校验 |
 | 命令注入 | 执行恶意命令 | 风险分级 + 用户确认 |
 | 代码注入 | 写入恶意代码 | 静态扫描 + 警告确认 |
@@ -226,7 +259,7 @@ def run_command(command: str, timeout: int = 30) -> dict:
 ### 6.1 单元测试
 - tests/test_tools.py：测试每个工具的基础功能
 - tests/test_security.py：测试风险分级逻辑
-- tests/test_context.py：测试上下文压缩逻辑
+- tests/test_context.py：测试上下文压缩逻辑（写后失效、按需重读、工作集保留、幂等性）
 - 使用 pytest + unittest.mock
 
 ### 6.2 集成测试

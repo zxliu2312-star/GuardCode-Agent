@@ -193,30 +193,55 @@
   - [x] `should_compress(messages: list, threshold: int) -> bool`
     - [x] 比较总字符数与阈值
 
-### 3.2 摘要生成
-- [ ] 实现 `context/summarizer.py`
-  - [ ] `summarize_messages(messages: list) -> str`
-    - [ ] 构造摘要 prompt
-    - [ ] 调用模型（使用 较次模型 节省成本）
-    - [ ] 返回摘要内容
-    - [ ] 异常处理：返回兜底消息
+### 3.2 前置修改：工具结果元信息
+- [ ] 修改 `_format_tool_result()` 增加 `tool_name` 参数
+  - [ ] 函数签名改为 `_format_tool_result(tool_call_id, tool_name, result)`
+  - [ ] 在 content JSON 中增加 `_tool_name` 字段
+  - [ ] 在 content JSON 中增加规范化路径（对 read_file/write_file/delete_file）
+  - [ ] 修改 agent.py 中所有调用点
 
-### 3.3 上下文压缩
-- [ ] 实现 `compress_history(messages: list, config: dict) -> list`
-  - [ ] 提取永久消息：`messages[0:2]`
-  - [ ] 提取最近消息：`messages[-K:]`（K 从配置读取）
-  - [ ] 提取中间消息：`messages[2:-K]`
-  - [ ] 如果中间消息不为空，调用 `summarize_messages()`
-  - [ ] 构造摘要消息：`{"role": "system", "content": "[摘要]: ..."}`
-  - [ ] 返回：永久 + 摘要 + 最近
+### 3.3 Context Compression - Level 1（规则压缩）
+- [ ] 实现 `context/compressor.py`
+  - [ ] `_find_modified_paths(messages: list) -> set[str]`
+    - [ ] 扫描历史，找出所有被 write_file/delete_file 成功修改的路径
+    - [ ] 使用规范化路径匹配（解决 `./src/main.py` vs `src/main.py` 问题）
+  - [ ] `_invalidate_outdated_reads(messages: list, modified_paths: set) -> list`
+    - [ ] 遍历 tool 消息，识别 read_file 结果
+    - [ ] 如果路径在 modified_paths 中，替换为过期标记
+    - [ ] 添加 `"compressed": True` 标记
+    - [ ] 跳过已标记 `compressed` 的消息
+  - [ ] `_compress_large_results(messages: list, threshold: int = 500) -> list`
+    - [ ] 遍历 tool 消息，识别大型 result
+    - [ ] 替换为 `<content: N chars>` 元信息
+    - [ ] 保留 success/error 状态
+    - [ ] 添加 `"compressed": True` 标记
+    - [ ] 跳过已标记 `compressed` 的消息
+  - [ ] `_compress_tool_call_arguments(messages: list, threshold: int = 500) -> list`
+    - [ ] 遍历 assistant 消息中的 tool_calls
+    - [ ] 压缩 write_file 的大型 content 参数为 `<N chars>` 占位符
+    - [ ] 保留工具名和其他小参数
+  - [ ] `compress_history(messages: list, keep_recent: int = 5, use_llm_summary: bool = False) -> list`
+    - [ ] 分区：permanent = messages[0:2], middle = messages[2:-keep_recent], recent = messages[-keep_recent:]
+    - [ ] 消息数不足时直接返回
+    - [ ] Level 1 规则压缩：依次调用上述四个函数
+    - [ ] Level 2（可选）：如果压缩率不足 50%，调用 `_summarize_with_llm()`
+    - [ ] 返回：permanent + compressed_middle + recent
 
-### 3.4 集成上下文压缩到 Agent Loop
+### 3.4 Context Compression - Level 2（LLM 摘要，可选）
+- [ ] 实现 `_summarize_with_llm(messages: list) -> str`
+  - [ ] 构造摘要 prompt（禁止脑补：只记录已执行操作，不添加未执行计划）
+  - [ ] 调用较次模型（如 gpt-3.5-turbo）节省成本
+  - [ ] 返回摘要内容
+  - [ ] 异常处理：返回兜底消息 `[Summarization failed]`
+
+### 3.5 集成到 Agent Loop
 - [ ] 修改 `run_agent_loop()`
-  - [ ] 在每次调用模型前，检查 `should_compress()`
+  - [ ] 在主循环开始前（调用模型前）检查 `should_compress()`
   - [ ] 如果需要压缩，调用 `compress_history()`
-  - [ ] 打印压缩提示（可选）
+  - [ ] 打印压缩提示（压缩了多少消息，释放了多少空间）
+  - [ ] 确认当前轮的 `response["tool_calls"]` 已独立提取，不受压缩影响
 
-### 3.5 System Prompt 优化
+### 3.6 System Prompt 优化
 - [ ] 编写完整的 System Prompt
   - [ ] 角色定位：GuardCode Agent，专注可信软件开发
   - [ ] 工具说明：列出每个工具及其用途
@@ -227,14 +252,19 @@
   - [ ] 安全注意事项：所有操作限制在 workspace 内
   - [ ] 最佳实践：增量修改、读取后再修改、使用版本控制
 
-### 3.6 迭代终止条件
+### 3.7 迭代终止条件
 - [ ] 完善循环终止逻辑
   - [ ] 达到 `max_iterations`：打印警告并退出
   - [ ] 无工具调用：正常结束
   - [ ] 循环检测（可选）：连续两轮工具调用相同
 
-### 3.7 验收测试
-- [ ] 测试长对话：构造需要多次迭代的任务，观察是否触发压缩
+### 3.8 验收测试
+- [ ] 测试写后失效：write_file 后旧 read_file 结果被标记过期
+- [ ] 测试按需重读：大型 result 被压缩为元信息
+- [ ] 测试工作集保留：最近 N 条消息完整保留
+- [ ] 测试幂等性：已压缩消息不重复压缩
+- [ ] 测试压缩不影响执行：当前轮工具执行不受压缩影响
+- [ ] 测试长对话：构造需要多次迭代的任务，观察压缩效果
 - [ ] 测试测试驱动修复：`guardcode "fix the bug in calculator.py, tests are in test_calculator.py"`
   - [ ] 观察是否：list_files → read → write → run pytest → 修复 → 再测试
 - [ ] 测试 TDD 流程：`guardcode "implement a stack with push/pop/peek"`
@@ -343,10 +373,15 @@
   - [ ] 测试配置规则：always_block、auto_approve
 
 ### 上下文测试
-- [ ] `tests/test_context.py`
-  - [ ] 测试 `estimate_context_size`
-  - [ ] 测试 `compress_history`：边界情况（消息数 < K）
-  - [ ] 测试摘要生成（使用 mock）
+- [ ] `tests/test_context_compressor.py`
+  - [ ] 测试写后失效：write_file 后旧 read_file 结果被标记过期
+  - [ ] 测试路径规范化匹配：`./src/main.py` vs `src/main.py`
+  - [ ] 测试按需重读：大型 result 被压缩为 `<content: N chars>`
+  - [ ] 测试压缩大型 tool_calls：write_file 的 content 参数被压缩
+  - [ ] 测试工作集保留：最近 N 条消息完整保留
+  - [ ] 测试幂等性：已压缩消息不重复压缩
+  - [ ] 测试 `compress_history`：分区逻辑、边界情况
+  - [ ] 测试 `estimate_context_size` 和 `should_compress`
 
 ---
 
