@@ -186,12 +186,12 @@
 ## Phase 3：智能化（1-2 天）
 
 ### 3.1 上下文估算
-- [ ] 实现 `context/manager.py`
-  - [ ] `estimate_context_size(messages: list) -> int`
-    - [ ] 使用 `json.dumps()` 序列化每条消息
-    - [ ] 累加字符数
-  - [ ] `should_compress(messages: list, threshold: int) -> bool`
-    - [ ] 比较总字符数与阈值
+- [x] 实现 `context/manager.py`
+  - [x] `estimate_context_size(messages: list) -> int`
+    - [x] 使用 `json.dumps()` 序列化每条消息
+    - [x] 累加字符数
+  - [x] `should_compress(messages: list, threshold: int) -> bool`
+    - [x] 比较总字符数与阈值
 
 ### 3.2 摘要生成
 - [ ] 实现 `context/summarizer.py`
