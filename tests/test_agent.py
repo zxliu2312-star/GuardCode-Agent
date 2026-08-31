@@ -263,59 +263,101 @@ class TestAgentLoop:
     @patch('guardcode.agent.init_workspace')
     def test_max_iterations_reached(self, mock_init_ws, mock_call):
         """测试达到最大迭代次数"""
-        # 模型一直返回工具调用，永不停止
-        mock_call.return_value = {
-            "content": "Continuing...",
-            "tool_calls": [
-                {
-                    "id": "call_123",
-                    "name": "list_files",
-                    "arguments": {"directory": "."}
-                }
-            ],
-            "finish_reason": "tool_calls"
-        }
-        
+        # 模型每轮返回不同的工具调用（避免触发循环检测）
+        mock_call.side_effect = [
+            {
+                "content": "Continuing...",
+                "tool_calls": [{"id": "c1", "name": "list_files", "arguments": {"directory": "."}}],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Continuing...",
+                "tool_calls": [{"id": "c2", "name": "list_files", "arguments": {"directory": "src"}}],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Continuing...",
+                "tool_calls": [{"id": "c3", "name": "list_files", "arguments": {"directory": "tests"}}],
+                "finish_reason": "tool_calls"
+            },
+        ]
+
         with patch('guardcode.agent.execute_tool') as mock_execute:
             mock_execute.return_value = {
                 "success": True,
                 "result": [],
                 "error": ""
             }
-            
+
             config = Config(workspace=".", model="gpt-4-turbo")
             result = run_agent_loop("Infinite task", config=config, max_iterations=3)
-            
+
             assert "maximum iterations" in result
             assert mock_call.call_count == 3
 
     @patch('guardcode.agent.call_model')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
-    def test_consecutive_failures(self, mock_init_ws, mock_execute, mock_call):
-        """测试连续失败超限"""
-        mock_call.return_value = {
-            "content": "Trying...",
-            "tool_calls": [
-                {
-                    "id": "call_123",
-                    "name": "read_file",
-                    "arguments": {"path": "bad.txt"}
-                }
-            ],
+    def test_loop_detection(self, mock_init_ws, mock_execute, mock_call):
+        """测试循环检测：连续两轮相同工具调用 → 终止"""
+        same_response = {
+            "content": "Reading file...",
+            "tool_calls": [{
+                "id": "call_1",
+                "name": "read_file",
+                "arguments": {"path": "main.py"}
+            }],
             "finish_reason": "tool_calls"
         }
-        
+        mock_call.side_effect = [same_response, same_response, same_response]
+
+        mock_execute.return_value = {
+            "success": True,
+            "result": "file content",
+            "error": ""
+        }
+
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read main.py repeatedly", config=config, max_iterations=10)
+
+        assert "loop detected" in result
+        # 应该在第2轮就检测到循环并终止（第1轮记录，第2轮相同→终止）
+        assert mock_call.call_count == 2
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_consecutive_failures(self, mock_init_ws, mock_execute, mock_call):
+        """测试连续失败超限"""
+        # 每轮返回不同的文件路径（避免触发循环检测）
+        mock_call.side_effect = [
+            {
+                "content": "Trying...",
+                "tool_calls": [{"id": "c1", "name": "read_file", "arguments": {"path": "bad1.txt"}}],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Trying...",
+                "tool_calls": [{"id": "c2", "name": "read_file", "arguments": {"path": "bad2.txt"}}],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Trying...",
+                "tool_calls": [{"id": "c3", "name": "read_file", "arguments": {"path": "bad3.txt"}}],
+                "finish_reason": "tool_calls"
+            },
+        ]
+
         # 工具一直失败
         mock_execute.return_value = {
             "success": False,
             "result": "",
             "error": "File not found"
         }
-        
+
         config = Config(workspace=".", model="gpt-4-turbo")
         result = run_agent_loop("Read bad file", config=config, max_iterations=10)
-        
+
         assert "consecutive failures" in result
         # 应该在 3 次连续失败后停止
         assert mock_execute.call_count == 3
@@ -591,6 +633,105 @@ class TestEventDrivenInvalidation:
 
         assert result == "Done."
         assert mock_execute.call_count == 1
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_read_compresses_old_large_reads_immediately(
+        self, mock_init_ws, mock_execute, mock_call
+    ):
+        """read_file 成功后立即压缩旧的大型读取结果"""
+        large_content = "x" * 600  # 超过 500 阈值
+        mock_call.side_effect = [
+            # 第一次：读取大文件
+            {
+                "content": "Reading big file...",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "name": "read_file",
+                    "arguments": {"path": "big.py"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            # 第二次：读取另一个文件（触发旧读取压缩）
+            {
+                "content": "Reading another file...",
+                "tool_calls": [{
+                    "id": "call_2",
+                    "name": "read_file",
+                    "arguments": {"path": "small.py"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            # 第三次：完成
+            {
+                "content": "Done.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            },
+        ]
+        mock_execute.side_effect = [
+            {"success": True, "result": large_content, "error": ""},
+            {"success": True, "result": "small content", "error": ""},
+        ]
+
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read big.py then small.py", config=config, max_iterations=10)
+
+        assert result == "Done."
+        # 第三次调用模型时，第一次的 read_file 结果应已被压缩
+        third_call_messages = mock_call.call_args_list[2][0][0]
+        for msg in third_call_messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id") == "call_1":
+                content = json.loads(msg["content"])
+                assert content.get("compressed") is True
+                assert content["result"] == "<content: 600 chars>"
+                break
+        else:
+            pytest.fail("Old read_file result not found in messages")
+
+    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.execute_tool')
+    @patch('guardcode.agent.init_workspace')
+    def test_read_preserves_latest_read(
+        self, mock_init_ws, mock_execute, mock_call
+    ):
+        """read_file 后，最新一轮的读取结果保持完整"""
+        large_content = "x" * 600
+        mock_call.side_effect = [
+            {
+                "content": "Reading...",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "name": "read_file",
+                    "arguments": {"path": "a.py"}
+                }],
+                "finish_reason": "tool_calls"
+            },
+            {
+                "content": "Done.",
+                "tool_calls": [],
+                "finish_reason": "stop"
+            },
+        ]
+        mock_execute.side_effect = [
+            {"success": True, "result": large_content, "error": ""},
+        ]
+
+        config = Config(workspace=".", model="gpt-4-turbo")
+        result = run_agent_loop("Read a.py", config=config, max_iterations=10)
+
+        assert result == "Done."
+        # 第二次调用模型时，read_file 结果应保持完整（没有更早的读取需要压缩）
+        second_call_messages = mock_call.call_args_list[1][0][0]
+        for msg in second_call_messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id") == "call_1":
+                content = json.loads(msg["content"])
+                assert "compressed" not in content
+                assert content["result"] == large_content
+                break
+        else:
+            pytest.fail("read_file result not found in messages")
 
 
 if __name__ == "__main__":

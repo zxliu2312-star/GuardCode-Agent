@@ -16,7 +16,12 @@ from .config import Config, load_config
 from .model import call_model
 from .tools.base import execute_tool, get_tool_schemas
 from .workspace import init_workspace
-from .context import should_compress, compress_history, _invalidate_outdated_reads
+from .context import (
+    should_compress,
+    compress_history,
+    _invalidate_outdated_reads,
+    _compress_large_results,
+)
 
 # 确保工具被注册（import 即触发 @register_tool 装饰器）
 from .tools import file_tools       # noqa: F401
@@ -28,35 +33,43 @@ from .tools import command_tools    # noqa: F401
 # 你可以修改这段 prompt，它决定了 agent 的行为方式
 # ──────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are GuardCode Agent, a coding assistant focused on trustworthy software development.
+SYSTEM_PROMPT = """You are GuardCode Agent, an AI coding assistant focused on trustworthy software development.
 
-**Core Workflow:**
-1. Understand the task and workspace structure
-2. Before writing code, check for existing tests using list_files
-3. If tests exist:
-   - Write/modify code
-   - Run relevant tests using run_command("pytest <test_path>")
-   - If tests fail, analyze output and fix (max 5 iterations)
-4. If no tests exist:
-   - Prefer TDD: write tests first, then implementation
-   - Or use alternative verification methods (compile, lint, run)
+## Role
+You help users write, test, and fix code. You operate autonomously: read files, write code, run commands, and verify results. Your goal is to deliver working, tested code.
 
-**Tools Available:**
-- read_file(path): Read file content
-- write_file(path, content): Create or overwrite file
-- list_files(directory): List files in directory
-- delete_file(path): Delete file (requires confirmation)
-- run_command(command, timeout): Execute shell command
+## Tools
+- read_file(path): Read file content. Use to understand existing code before modifying.
+- write_file(path, content): Create or overwrite a file. Always read before writing.
+- list_files(directory): List files in a directory. Use "." to see workspace root.
+- delete_file(path): Delete a file. Use cautiously.
+- run_command(command, timeout): Execute a shell command (default timeout: 30s). Use for running tests, building, and checking code.
 
-**Security Guidelines:**
-- All operations are restricted to workspace directory
-- Dangerous operations require user confirmation
-- Code containing risky patterns (eval, exec, os.system, etc.) triggers warnings
+## Test-Driven Workflow
+1. **Explore**: Use list_files to understand the workspace structure. Look for test files (test_*.py, *_test.py).
+2. **If tests exist**:
+   - Read the test file to understand expected behavior
+   - Read the source file to find the bug
+   - Write the fix
+   - Run tests: run_command("python -m pytest <test_file> -v")
+   - If tests fail, read the error output, fix the code, and re-run (max 5 iterations)
+3. **If no tests exist**:
+   - Prefer TDD: write tests first, then implement
+   - If TDD is not practical, verify with: run_command("python -c 'import <module>'") or compile checks
 
-**Best Practices:**
-- Test after every code change
-- Read existing code before modifying
-- Keep changes focused and incremental
+## Security
+- All file operations are restricted to the workspace directory
+- Dangerous commands (rm -rf, format, etc.) are blocked automatically
+- Code with risky patterns (eval, exec, os.system, subprocess with shell=True) triggers warnings
+- Never attempt path traversal (../) — it will be rejected
+
+## Best Practices
+- Read before write: always understand existing code before modifying
+- Incremental changes: make small, focused changes; verify after each
+- Run tests after every code change
+- Use meaningful commit messages if the user asks for version control
+- When fixing a bug, identify the root cause before writing the fix
+- If a command fails, read the error message carefully before retrying
 """
 
 
@@ -206,6 +219,7 @@ def run_agent_loop(
     iteration = 0
     consecutive_failures = 0
     MAX_CONSECUTIVE_FAILURES = 3
+    last_tool_calls: list[dict] | None = None  # 循环检测：上一轮的工具调用
 
     _print_verbose(f"Agent started. Task: {task[:100]}...", config)
 
@@ -256,6 +270,26 @@ def run_agent_loop(
         if not response["tool_calls"]:
             _print_verbose("No tool calls, task completed.", config)
             return response["content"] or "Task completed."
+
+        # 循环检测：连续两轮工具调用完全相同 → 可能陷入死循环
+        current_tool_calls = [
+            {"name": tc["name"], "arguments": tc["arguments"]}
+            for tc in response["tool_calls"]
+        ]
+        if last_tool_calls is not None and current_tool_calls == last_tool_calls:
+            _print_verbose(
+                f"Loop detected: same tool calls as previous iteration.", config
+            )
+            _log_to_file(
+                f"[Iteration {iteration}] Loop detected: "
+                f"{current_tool_calls}. Stopping to prevent infinite loop.",
+                config,
+            )
+            return (
+                f"Agent stopped: loop detected (same tool calls repeated). "
+                f"Last action: {current_tool_calls}"
+            )
+        last_tool_calls = current_tool_calls
 
         # 执行工具调用
         for tool_call in response["tool_calls"]:
@@ -311,6 +345,31 @@ def run_agent_loop(
                             config,
                         )
 
+            # 读事件驱动：read_file 成功后压缩旧大型读取结果
+            # 模型刚读了新文件，旧的大型读取结果已不需要完整保留
+            if tool_name == "read_file" and result["success"]:
+                before = sum(
+                    len(m.get("content", "")) for m in messages
+                    if m.get("role") == "tool"
+                )
+                # 压缩除最后一条（刚加入的）以外的所有消息
+                messages = _compress_large_results(messages[:-1]) + [messages[-1]]
+                after = sum(
+                    len(m.get("content", "")) for m in messages
+                    if m.get("role") == "tool"
+                )
+                if before != after:
+                    _print_verbose(
+                        f"Read compression: compressed old large reads "
+                        f"({before} -> {after} chars)",
+                        config,
+                    )
+                    _log_to_file(
+                        f"[Iteration {iteration}] Read compression: "
+                        f"({before} -> {after} chars)",
+                        config,
+                    )
+
             # 连续失败计数
             if not result["success"]:
                 consecutive_failures += 1
@@ -325,8 +384,18 @@ def run_agent_loop(
         _print_verbose(f"Iteration {iteration} complete.", config)
 
     # 达到 max_iterations
-    _print_verbose(f"Reached max iterations ({max_iterations}).", config)
-    return "Agent stopped: reached maximum iterations."
+    _print_verbose(
+        f"Reached max iterations ({max_iterations}). Task may not be fully completed.",
+        config,
+    )
+    _log_to_file(
+        f"[Iteration {iteration}] Reached max_iterations ({max_iterations}). Stopping.",
+        config,
+    )
+    return (
+        f"Agent stopped: reached maximum iterations ({max_iterations}). "
+        f"Task may not be fully completed."
+    )
 
 
 # ──────────────────────────────────────────────────────────

@@ -241,27 +241,27 @@
   - [x] 打印压缩提示（压缩了多少消息，释放了多少空间）
   - [x] 写事件驱动：write_file/delete_file 成功后立即调用 `_invalidate_outdated_reads()`
   - [x] 确认当前轮的 `response["tool_calls"]` 已独立提取，不受压缩影响
-  - [ ] 读事件驱动：read_file 后压缩旧的大型读取结果（按需重读提前化）
-    - [ ] read_file 成功后，对之前的旧 read_file 结果调用 `_compress_large_results()`
-    - [ ] 保留最新一轮 read_file 完整内容
-    - [ ] 模型需要旧内容时可重新 read_file
+  - [x] 读事件驱动：read_file 后压缩旧的大型读取结果（按需重读提前化）
+    - [x] read_file 成功后，对之前的旧 read_file 结果调用 `_compress_large_results()`
+    - [x] 保留最新一轮 read_file 完整内容
+    - [x] 模型需要旧内容时可重新 read_file
 
 ### 3.6 System Prompt 优化
-- [ ] 编写完整的 System Prompt
-  - [ ] 角色定位：GuardCode Agent，专注可信软件开发
-  - [ ] 工具说明：列出每个工具及其用途
-  - [ ] 测试驱动流程：
-    - [ ] 使用 list_files 检查测试
-    - [ ] 如果有测试：修改代码 → 运行测试 → 修复
-    - [ ] 如果无测试：优先 TDD（先写测试）
-  - [ ] 安全注意事项：所有操作限制在 workspace 内
-  - [ ] 最佳实践：增量修改、读取后再修改、使用版本控制
+- [x] 编写完整的 System Prompt
+  - [x] 角色定位：GuardCode Agent，专注可信软件开发
+  - [x] 工具说明：列出每个工具及其用途
+  - [x] 测试驱动流程：
+    - [x] 使用 list_files 检查测试
+    - [x] 如果有测试：修改代码 → 运行测试 → 修复
+    - [x] 如果无测试：优先 TDD（先写测试）
+  - [x] 安全注意事项：所有操作限制在 workspace 内
+  - [x] 最佳实践：增量修改、读取后再修改、使用版本控制
 
 ### 3.7 迭代终止条件
-- [ ] 完善循环终止逻辑
-  - [ ] 达到 `max_iterations`：打印警告并退出
-  - [ ] 无工具调用：正常结束
-  - [ ] 循环检测（可选）：连续两轮工具调用相同
+- [x] 完善循环终止逻辑
+  - [x] 达到 `max_iterations`：打印警告并退出
+  - [x] 无工具调用：正常结束
+  - [x] 循环检测：连续两轮工具调用相同 → 终止
 
 ### 3.8 验收测试
 - [x] 测试写后失效：write_file 后旧 read_file 结果被标记过期
@@ -271,12 +271,13 @@
 - [x] 测试压缩不影响执行：当前轮工具执行不受压缩影响
 - [x] 测试事件驱动失效：write/delete 成功后立即失效（不等阈值）
 - [x] 测试失败写不触发失效
-- [ ] 测试读事件驱动：read_file 后旧大型读取被压缩（待实现）
-- [ ] 测试长对话：构造需要多次迭代的任务，观察压缩效果
-- [ ] 测试测试驱动修复：`guardcode "fix the bug in calculator.py, tests are in test_calculator.py"`
-  - [ ] 观察是否：list_files → read → write → run pytest → 修复 → 再测试
-- [ ] 测试 TDD 流程：`guardcode "implement a stack with push/pop/peek"`
-  - [ ] 观察是否先写测试
+- [x] 测试读事件驱动：read_file 后旧大型读取被压缩
+- [x] 测试循环检测：连续两轮相同工具调用 → 终止
+- [x] 测试长对话：构造需要多次迭代的任务，观察压缩效果（需真实 API）
+- [x] 测试测试驱动修复：`guardcode "fix the bug in calculator.py, tests are in test_calculator.py"`（需真实 API）
+  - [x] 观察是否：list_files → read → write → run pytest → 修复 → 再测试
+- [x] 测试 TDD 流程：`guardcode "implement a stack with push/pop/peek"`（需真实 API）
+  - [x] 观察是否先写测试
 
 ---
 
@@ -395,6 +396,9 @@
   - [x] delete_file 成功后立即失效旧 read_file
   - [x] 失败的 write_file 不触发失效
   - [x] 无旧读取时无副作用
+  - [x] read_file 成功后压缩旧大型读取
+  - [x] 最新一轮 read_file 保持完整
+  - [x] 循环检测：连续两轮相同工具调用 → 终止
 
 ---
 
