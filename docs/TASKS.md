@@ -165,21 +165,21 @@
   - [x] 根据用户选择决定是否写入
 
 ### 2.7 配置文件扩展
-- [ ] 扩展配置格式，添加 `security` 字段
-  - [ ] `security.always_block`（字符串列表）
-  - [ ] `security.auto_approve`（字符串列表）
-- [ ] 更新配置加载逻辑
-  - [ ] 支持全局配置：`~/.guardcode/config.json`
-  - [ ] 支持项目配置：`{workspace}/.guardcode.json`
-  - [ ] 合并配置（项目覆盖全局）
+- [x] 扩展配置格式，添加 `security` 字段
+  - [x] `security.always_block`（字符串列表）
+  - [x] `security.auto_approve`（字符串列表）
+- [x] 更新配置加载逻辑
+  - [x] 支持全局配置：`~/.guardcode/config.json`
+  - [x] 支持项目配置：`{workspace}/.guardcode.json`
+  - [x] 合并配置（项目覆盖全局）
 
 ### 2.8 验收测试
-- [ ] 测试危险命令：`guardcode "delete all .pyc files using rm -rf"`
-  - [ ] 应该触发确认提示
-- [ ] 测试代码风险：`guardcode "write a script that uses eval()"`
-  - [ ] 应该显示风险警告
-- [ ] 测试自定义规则：配置 `auto_approve: ["rm *.pyc"]`，再执行删除
-  - [ ] 应该自动放行
+- [x] 测试危险命令：`guardcode "delete all .pyc files using rm -rf"`
+  - [x] 应该触发确认提示
+- [x] 测试代码风险：`guardcode "write a script that uses eval()"`
+  - [x] 应该显示风险警告
+- [x] 测试自定义规则：配置 `auto_approve: ["rm *.pyc"]`，再执行删除
+  - [x] 应该自动放行
 
 ---
 
@@ -197,7 +197,7 @@
 - [ ] 实现 `context/summarizer.py`
   - [ ] `summarize_messages(messages: list) -> str`
     - [ ] 构造摘要 prompt
-    - [ ] 调用模型（使用 gpt-3.5-turbo 节省成本）
+    - [ ] 调用模型（使用 较次模型 节省成本）
     - [ ] 返回摘要内容
     - [ ] 异常处理：返回兜底消息
 
