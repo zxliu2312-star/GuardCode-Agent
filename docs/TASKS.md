@@ -284,83 +284,83 @@
 ## Phase 4：工程化（1 天）
 
 ### 4.1 Rich 输出模块
-- [ ] 创建 `ui/console.py`
-  - [ ] 导入 `rich.console.Console` 和 `rich.panel.Panel`
-  - [ ] 创建全局 `console` 实例
-  - [ ] `print_tool_call(tool_name, args)`：蓝色，带 → 图标
-  - [ ] `print_tool_result(result)`：绿色 ✓ 或红色 ✗
-  - [ ] `print_risk_warning(risks)`：黄色 Panel，显示风险列表
-  - [ ] `print_confirm_prompt(message)`：紫色 ❓
-  - [ ] `print_context_compress(count)`：青色 📊
-  - [ ] `print_final_response(content)`：正常格式
+- [x] 创建 `ui/console.py`
+  - [x] 导入 `rich.console.Console` 和 `rich.panel.Panel`
+  - [x] 创建全局 `console` 实例
+  - [x] `print_tool_call(tool_name, args)`：蓝色，带 → 图标
+  - [x] `print_tool_result(result)`：绿色 ✓ 或红色 ✗
+  - [x] `print_risk_warning(risks)`：黄色 Panel，显示风险列表
+  - [x] `print_confirm_prompt(message)`：紫色 ❓
+  - [x] `print_context_compress(count)`：青色 📊
+  - [x] `print_final_response(content)`：正常格式
 
 ### 4.2 集成 Rich 输出
-- [ ] 替换所有 `print()` 调用为 Rich 函数
-  - [ ] Agent loop 中的工具调用和结果
-  - [ ] 风险警告和确认提示
-  - [ ] 上下文压缩通知
-  - [ ] 最终响应输出
+- [x] 替换所有 `print()` 调用为 Rich 函数
+  - [x] Agent loop 中的工具调用和结果
+  - [x] 风险警告和确认提示
+  - [x] 上下文压缩通知
+  - [x] 最终响应输出
 
 ### 4.3 日志系统
-- [ ] 配置 `logging` 模块
-  - [ ] 创建日志目录：`~/.guardcode/logs/`
-  - [ ] 配置 `RichHandler`（终端输出）
-  - [ ] 配置 `FileHandler`（文件输出）
-  - [ ] 设置格式：`{timestamp} | {level} | {name} | {message}`
-- [ ] 添加日志记录
-  - [ ] 工具调用：`logger.info(f"Tool: {tool_name}({args})")`
-  - [ ] 工具结果：`logger.info(f"Result: {result}")`
-  - [ ] 风险检测：`logger.warning(f"Risk: {pattern}")`
-  - [ ] 用户确认：`logger.info(f"User confirmed: {decision}")`
-  - [ ] 错误：`logger.error(f"Error: {error}")`
-  - [ ] 上下文压缩：`logger.info(f"Compressed {n} messages")`
-- [ ] 日志写入兜底：所有日志调用用 `try/except` 包裹
+- [x] 配置 `logging` 模块
+  - [x] 创建日志目录：`~/.guardcode/logs/`
+  - [x] 配置 `RichHandler`（终端输出）
+  - [x] 配置 `FileHandler`（文件输出）
+  - [x] 设置格式：`{timestamp} | {level} | {name} | {message}`
+- [x] 添加日志记录
+  - [x] 工具调用：`logger.info(f"Tool: {tool_name}({args})")`
+  - [x] 工具结果：`logger.info(f"Result: {result}")`
+  - [x] 风险检测：`logger.warning(f"Risk: {pattern}")`
+  - [x] 用户确认：`logger.info(f"User confirmed: {decision}")`
+  - [x] 错误：`logger.error(f"Error: {error}")`
+  - [x] 上下文压缩：`logger.info(f"Compressed {n} messages")`
+- [x] 日志写入兜底：所有日志调用用 `try/except` 包裹
 
 ### 4.4 错误处理
-- [ ] 模型调用重试
-  - [ ] 实现 `call_model_with_retry(messages, max_retries=3)`
-  - [ ] 使用 `time.sleep(2 ** attempt)` 指数退避
-  - [ ] 捕获网络错误和 API 错误
-  - [ ] 重试 3 次后仍失败，抛出异常
-- [ ] 用户中断处理
-  - [ ] 在 `__main__.py` 中捕获 `KeyboardInterrupt`
-  - [ ] 实现 `save_session(messages, workspace)`
-    - [ ] 保存到 `~/.guardcode/sessions/{timestamp}.json`
-  - [ ] 打印提示：任务已中断，对话历史已保存
-  - [ ] 优雅退出
+- [x] 模型调用重试
+  - [x] 实现 `call_model_with_retry(messages, max_retries=3)`
+  - [x] 使用 `time.sleep(2 ** attempt)` 指数退避
+  - [x] 捕获网络错误和 API 错误
+  - [x] 重试 3 次后仍失败，抛出异常
+- [x] 用户中断处理
+  - [x] 在 `__main__.py` 中捕获 `KeyboardInterrupt`
+  - [x] 实现 `save_session(messages, workspace)`
+    - [x] 保存到 `~/.guardcode/sessions/{timestamp}.json`
+  - [x] 打印提示：任务已中断，对话历史已保存
+  - [x] 优雅退出
 
 ### 4.5 CLI 完善
-- [ ] 扩展 `argparse` 参数
-  - [ ] 添加 `--api-base`（API 端点 URL）
-  - [ ] 添加 `--version`（显示版本号）
-  - [ ] 添加 `--verbose`（详细输出模式）
-- [ ] 参数验证
-  - [ ] 检查 `OPENAI_API_KEY` 是否设置
-  - [ ] 检查 workspace 是否存在
-  - [ ] 检查配置文件格式是否正确
+- [x] 扩展 `argparse` 参数
+  - [x] 添加 `--api-base`（API 端点 URL）
+  - [x] 添加 `--version`（显示版本号）
+  - [x] 添加 `--verbose`（详细输出模式）
+- [x] 参数验证
+  - [x] 检查 `OPENAI_API_KEY` 是否设置
+  - [x] 检查 workspace 是否存在
+  - [x] 检查配置文件格式是否正确
 
 ### 4.6 文档完善
-- [ ] 更新 `README.md`
-  - [ ] 项目介绍
-  - [ ] 安装说明
-  - [ ] 使用示例
-  - [ ] 配置说明
-  - [ ] 常见问题
-- [ ] 创建 `requirements.txt`
-  - [ ] `openai>=1.0.0`
-  - [ ] `rich>=13.0.0`
-- [ ] 创建 `.gitignore`
-  - [ ] `__pycache__/`
-  - [ ] `*.pyc`
-  - [ ] `.env`
-  - [ ] `*.log`
-  - [ ] `.guardcode/`（本地配置和日志）
+- [x] 更新 `README.md`
+  - [x] 项目介绍
+  - [x] 安装说明
+  - [x] 使用示例
+  - [x] 配置说明
+  - [x] 常见问题
+- [x] 创建 `requirements.txt`
+  - [x] `openai>=1.0.0`
+  - [x] `rich>=13.0.0`
+- [x] 创建 `.gitignore`
+  - [x] `__pycache__/`
+  - [x] `*.pyc`
+  - [x] `.env`
+  - [x] `*.log`
+  - [x] `.guardcode/`（本地配置和日志）
 
 ### 4.7 验收测试
-- [ ] 测试格式化输出：执行任意任务，检查输出是否清晰美观
-- [ ] 测试日志记录：检查 `~/.guardcode/logs/agent.log` 是否完整
-- [ ] 测试错误恢复：断网状态下执行任务，观察重试和错误提示
-- [ ] 测试用户中断：Ctrl+C 中断任务，检查会话是否保存
+- [x] 测试格式化输出：执行任意任务，检查输出是否清晰美观
+- [x] 测试日志记录：检查 `~/.guardcode/logs/agent.log` 是否完整
+- [x] 测试错误恢复：断网状态下执行任务，观察重试和错误提示
+- [x] 测试用户中断：Ctrl+C 中断任务，检查会话是否保存
 
 ---
 

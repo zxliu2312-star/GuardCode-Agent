@@ -1,4 +1,4 @@
-"""
+﻿"""
 测试 Agent 核心循环
 """
 
@@ -101,7 +101,7 @@ class TestFormatHelpers:
 class TestAgentLoop:
     """测试 Agent 主循环"""
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_simple_task_completion(self, mock_init_ws, mock_execute, mock_call):
@@ -120,7 +120,7 @@ class TestAgentLoop:
         assert mock_call.call_count == 1
         assert mock_execute.call_count == 0
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_single_tool_call(self, mock_init_ws, mock_execute, mock_call):
@@ -160,7 +160,7 @@ class TestAgentLoop:
         assert mock_execute.call_count == 1
         mock_execute.assert_called_once_with("read_file", {"path": "test.txt"}, config=config)
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_multiple_tool_calls(self, mock_init_ws, mock_execute, mock_call):
@@ -210,7 +210,7 @@ class TestAgentLoop:
         assert mock_call.call_count == 3
         assert mock_execute.call_count == 2
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_tool_failure_recovery(self, mock_init_ws, mock_execute, mock_call):
@@ -259,7 +259,7 @@ class TestAgentLoop:
         assert "created successfully" in result
         assert mock_call.call_count == 3
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.init_workspace')
     def test_max_iterations_reached(self, mock_init_ws, mock_call):
         """测试达到最大迭代次数"""
@@ -295,7 +295,7 @@ class TestAgentLoop:
             assert "maximum iterations" in result
             assert mock_call.call_count == 3
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_loop_detection(self, mock_init_ws, mock_execute, mock_call):
@@ -324,7 +324,7 @@ class TestAgentLoop:
         # 应该在第2轮就检测到循环并终止（第1轮记录，第2轮相同→终止）
         assert mock_call.call_count == 2
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_consecutive_failures(self, mock_init_ws, mock_execute, mock_call):
@@ -362,7 +362,7 @@ class TestAgentLoop:
         # 应该在 3 次连续失败后停止
         assert mock_execute.call_count == 3
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.init_workspace')
     def test_model_call_failure(self, mock_init_ws, mock_call):
         """测试模型调用失败"""
@@ -376,7 +376,7 @@ class TestAgentLoop:
         # 应该尝试 3 次后停止
         assert mock_call.call_count == 3
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_model_failure_then_success(self, mock_init_ws, mock_execute, mock_call):
@@ -398,7 +398,7 @@ class TestAgentLoop:
         assert result == "Success!"
         assert mock_call.call_count == 3
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_multiple_tools_in_one_call(self, mock_init_ws, mock_execute, mock_call):
@@ -443,7 +443,7 @@ class TestAgentLoop:
 class TestEventDrivenInvalidation:
     """测试事件驱动写后失效（不等阈值触发）"""
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_write_invalidates_old_read_immediately(
@@ -498,7 +498,7 @@ class TestEventDrivenInvalidation:
         else:
             pytest.fail("Old read_file result not found in messages")
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_delete_invalidates_old_read_immediately(
@@ -549,7 +549,7 @@ class TestEventDrivenInvalidation:
         else:
             pytest.fail("Old read_file result not found in messages")
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_failed_write_does_not_invalidate(
@@ -601,7 +601,7 @@ class TestEventDrivenInvalidation:
         else:
             pytest.fail("Old read_file result not found in messages")
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_write_without_prior_read_no_side_effect(
@@ -634,7 +634,7 @@ class TestEventDrivenInvalidation:
         assert result == "Done."
         assert mock_execute.call_count == 1
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_read_compresses_old_large_reads_immediately(
@@ -690,7 +690,7 @@ class TestEventDrivenInvalidation:
         else:
             pytest.fail("Old read_file result not found in messages")
 
-    @patch('guardcode.agent.call_model')
+    @patch('guardcode.agent.call_model_with_retry')
     @patch('guardcode.agent.execute_tool')
     @patch('guardcode.agent.init_workspace')
     def test_read_preserves_latest_read(
@@ -736,3 +736,4 @@ class TestEventDrivenInvalidation:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

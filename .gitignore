@@ -21,6 +21,9 @@ build/
 # GuardCode user config (may contain preferences, not secrets but user-specific)
 .guardcode.json
 
+# GuardCode local data (logs, sessions, local config)
+.guardcode/
+
 # Logs
 *.log
 

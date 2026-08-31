@@ -2,13 +2,15 @@
 文件操作工具
 
 提供文件读写、列表和删除功能，所有操作都在工作区边界内。
+代码静态扫描结果使用 Rich 格式化输出。
 """
 
 from pathlib import Path
 from typing import Dict, Any
 from ..workspace import get_workspace
 from .base import register_tool
-from ..security import scan_python_code, format_scan_results
+from ..security import scan_python_code
+from ..ui.console import print_risk_warning, console
 
 
 @register_tool(
@@ -132,9 +134,12 @@ def write_file(path: str, content: str) -> Dict[str, Any]:
         if validated_path.suffix == ".py":
             risks = scan_python_code(content)
             if risks:
-                print(format_scan_results(risks))
-                print(f"  写入 {path} 前发现上述风险。")
-                choice = input("  [c]ontinue / [a]bort: ").strip().lower()
+                print_risk_warning(risks)
+                console.print(
+                    f"[yellow]  Writing to {path} with above security risks.[/yellow]"
+                )
+                console.print("[yellow]  [c]ontinue / [a]bort:[/yellow] ", end="")
+                choice = input().strip().lower()
                 if choice != "c":
                     return {
                         "success": False,

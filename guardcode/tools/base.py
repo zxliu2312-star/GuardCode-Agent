@@ -2,6 +2,7 @@
 工具系统基础设施
 
 提供工具注册、schema 生成和执行机制。
+使用 Rich 格式化输出显示被阻止的操作。
 """
 
 import inspect
@@ -10,6 +11,7 @@ from functools import wraps
 
 # 安全模块（延迟导入避免循环依赖）
 from ..security import classify_risk, confirm_operation, format_blocked_message, RiskLevel
+from ..ui.console import print_blocked
 
 
 # 全局工具注册表
@@ -217,7 +219,7 @@ def execute_tool(
     risk_level = classify_risk(name, args, security_config)
 
     if risk_level == RiskLevel.BLOCKED:
-        print(format_blocked_message(name, args))
+        print_blocked(name, args)
         return {
             "success": False,
             "result": None,
