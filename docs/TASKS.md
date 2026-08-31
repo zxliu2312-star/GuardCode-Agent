@@ -194,53 +194,57 @@
     - [x] 比较总字符数与阈值
 
 ### 3.2 前置修改：工具结果元信息
-- [ ] 修改 `_format_tool_result()` 增加 `tool_name` 参数
-  - [ ] 函数签名改为 `_format_tool_result(tool_call_id, tool_name, result)`
-  - [ ] 在 content JSON 中增加 `_tool_name` 字段
-  - [ ] 在 content JSON 中增加规范化路径（对 read_file/write_file/delete_file）
-  - [ ] 修改 agent.py 中所有调用点
+- [x] 修改 `_format_tool_result()` 增加 `tool_name` 参数
+  - [x] 函数签名改为 `_format_tool_result(tool_call_id, tool_name, result, tool_args)`
+  - [x] 在 content JSON 中增加 `_tool_name` 字段
+  - [x] 在 content JSON 中增加规范化路径 `_path`（对 read_file/write_file/delete_file）
+  - [x] 修改 agent.py 中所有调用点
 
 ### 3.3 Context Compression - Level 1（规则压缩）
-- [ ] 实现 `context/compressor.py`
-  - [ ] `_find_modified_paths(messages: list) -> set[str]`
-    - [ ] 扫描历史，找出所有被 write_file/delete_file 成功修改的路径
-    - [ ] 使用规范化路径匹配（解决 `./src/main.py` vs `src/main.py` 问题）
-  - [ ] `_invalidate_outdated_reads(messages: list, modified_paths: set) -> list`
-    - [ ] 遍历 tool 消息，识别 read_file 结果
-    - [ ] 如果路径在 modified_paths 中，替换为过期标记
-    - [ ] 添加 `"compressed": True` 标记
-    - [ ] 跳过已标记 `compressed` 的消息
-  - [ ] `_compress_large_results(messages: list, threshold: int = 500) -> list`
-    - [ ] 遍历 tool 消息，识别大型 result
-    - [ ] 替换为 `<content: N chars>` 元信息
-    - [ ] 保留 success/error 状态
-    - [ ] 添加 `"compressed": True` 标记
-    - [ ] 跳过已标记 `compressed` 的消息
-  - [ ] `_compress_tool_call_arguments(messages: list, threshold: int = 500) -> list`
-    - [ ] 遍历 assistant 消息中的 tool_calls
-    - [ ] 压缩 write_file 的大型 content 参数为 `<N chars>` 占位符
-    - [ ] 保留工具名和其他小参数
-  - [ ] `compress_history(messages: list, keep_recent: int = 5, use_llm_summary: bool = False) -> list`
-    - [ ] 分区：permanent = messages[0:2], middle = messages[2:-keep_recent], recent = messages[-keep_recent:]
-    - [ ] 消息数不足时直接返回
-    - [ ] Level 1 规则压缩：依次调用上述四个函数
-    - [ ] Level 2（可选）：如果压缩率不足 50%，调用 `_summarize_with_llm()`
-    - [ ] 返回：permanent + compressed_middle + recent
+- [x] 实现 `context/compressor.py`
+  - [x] `_find_modified_paths(messages: list) -> set[str]`
+    - [x] 扫描历史，找出所有被 write_file/delete_file 成功修改的路径
+    - [x] 使用规范化路径匹配（解决 `./src/main.py` vs `src/main.py` 问题）
+  - [x] `_invalidate_outdated_reads(messages: list, modified_paths: set) -> list`
+    - [x] 遍历 tool 消息，识别 read_file 结果
+    - [x] 如果路径在 modified_paths 中，替换为过期标记
+    - [x] 添加 `"compressed": True` 标记
+    - [x] 跳过已标记 `compressed` 的消息
+  - [x] `_compress_large_results(messages: list, threshold: int = 500) -> list`
+    - [x] 遍历 tool 消息，识别大型 result
+    - [x] 替换为 `<content: N chars>` 元信息
+    - [x] 保留 success/error 状态
+    - [x] 添加 `"compressed": True` 标记
+    - [x] 跳过已标记 `compressed` 的消息
+  - [x] `_compress_tool_call_arguments(messages: list, threshold: int = 500) -> list`
+    - [x] 遍历 assistant 消息中的 tool_calls
+    - [x] 压缩 write_file 的大型 content 参数为 `<N chars>` 占位符
+    - [x] 保留工具名和其他小参数
+  - [x] `compress_history(messages: list, keep_recent: int = 5, use_llm_summary: bool = False) -> list`
+    - [x] 分区：permanent = messages[0:2], middle = messages[2:-keep_recent], recent = messages[-keep_recent:]
+    - [x] 消息数不足时直接返回
+    - [x] Level 1 规则压缩：依次调用上述四个函数
+    - [x] Level 2（可选）：如果压缩率不足 50%，调用 `_summarize_with_llm()`
+    - [x] 返回：permanent + compressed_middle + recent
 
 ### 3.4 Context Compression - Level 2（LLM 摘要，可选）
-- [ ] 实现 `_summarize_with_llm(messages: list) -> str`
-  - [ ] 构造摘要 prompt（禁止脑补：只记录已执行操作，不添加未执行计划）
-  - [ ] 调用较次模型（如 gpt-3.5-turbo）节省成本
-  - [ ] 返回摘要内容
-  - [ ] 异常处理：返回兜底消息 `[Summarization failed]`
+- [x] 实现 `_summarize_with_llm(messages: list) -> str`
+  - [x] 构造摘要 prompt（禁止脑补：只记录已执行操作，不添加未执行计划）
+  - [x] 调用较次模型（如 gpt-3.5-turbo）节省成本
+  - [x] 返回摘要内容
+  - [x] 异常处理：返回兜底消息 `[Summarization failed]`
 
 ### 3.5 集成到 Agent Loop
 - [x] 修改 `run_agent_loop()`
   - [x] 阈值驱动：在主循环开始前（调用模型前）检查 `should_compress()`
   - [x] 如果需要压缩，调用 `compress_history()`
   - [x] 打印压缩提示（压缩了多少消息，释放了多少空间）
-  - [x] 事件驱动：写/删成功后立即调用 `_invalidate_outdated_reads()`
+  - [x] 写事件驱动：write_file/delete_file 成功后立即调用 `_invalidate_outdated_reads()`
   - [x] 确认当前轮的 `response["tool_calls"]` 已独立提取，不受压缩影响
+  - [ ] 读事件驱动：read_file 后压缩旧的大型读取结果（按需重读提前化）
+    - [ ] read_file 成功后，对之前的旧 read_file 结果调用 `_compress_large_results()`
+    - [ ] 保留最新一轮 read_file 完整内容
+    - [ ] 模型需要旧内容时可重新 read_file
 
 ### 3.6 System Prompt 优化
 - [ ] 编写完整的 System Prompt
@@ -260,11 +264,14 @@
   - [ ] 循环检测（可选）：连续两轮工具调用相同
 
 ### 3.8 验收测试
-- [ ] 测试写后失效：write_file 后旧 read_file 结果被标记过期
-- [ ] 测试按需重读：大型 result 被压缩为元信息
-- [ ] 测试工作集保留：最近 N 条消息完整保留
-- [ ] 测试幂等性：已压缩消息不重复压缩
-- [ ] 测试压缩不影响执行：当前轮工具执行不受压缩影响
+- [x] 测试写后失效：write_file 后旧 read_file 结果被标记过期
+- [x] 测试按需重读：大型 result 被压缩为元信息
+- [x] 测试工作集保留：最近 N 条消息完整保留
+- [x] 测试幂等性：已压缩消息不重复压缩
+- [x] 测试压缩不影响执行：当前轮工具执行不受压缩影响
+- [x] 测试事件驱动失效：write/delete 成功后立即失效（不等阈值）
+- [x] 测试失败写不触发失效
+- [ ] 测试读事件驱动：read_file 后旧大型读取被压缩（待实现）
 - [ ] 测试长对话：构造需要多次迭代的任务，观察压缩效果
 - [ ] 测试测试驱动修复：`guardcode "fix the bug in calculator.py, tests are in test_calculator.py"`
   - [ ] 观察是否：list_files → read → write → run pytest → 修复 → 再测试
@@ -383,11 +390,11 @@
   - [x] 测试幂等性：已压缩消息不重复压缩
   - [x] 测试 `compress_history`：分区逻辑、边界情况
   - [x] 测试 `estimate_context_size` 和 `should_compress`
-- [ ] `tests/test_agent.py`：事件驱动失效集成测试
-  - [ ] write_file 成功后立即失效旧 read_file（不等阈值）
-  - [ ] delete_file 成功后立即失效旧 read_file
-  - [ ] 失败的 write_file 不触发失效
-  - [ ] 无旧读取时无副作用
+- [x] `tests/test_agent.py`：事件驱动失效集成测试
+  - [x] write_file 成功后立即失效旧 read_file（不等阈值）
+  - [x] delete_file 成功后立即失效旧 read_file
+  - [x] 失败的 write_file 不触发失效
+  - [x] 无旧读取时无副作用
 
 ---
 

@@ -475,20 +475,26 @@ while iteration < max_iterations:
             path = Path(tc["arguments"].get("path", "")).as_posix()
             if path:
                 messages = _invalidate_outdated_reads(messages, {path})
+
+        # ✅ 事件驱动：read_file 成功后压缩旧大型读取结果
+        # 模型刚读了新文件，旧的大型读取结果已不需要完整保留
+        if tc["name"] == "read_file" and result["success"]:
+            messages = _compress_large_results(messages[:-1]) + [messages[-1]]
 ```
 
-**两类压缩的分工**：
+**三类触发机制**：
 
-| 类型 | 触发条件 | 规则 | 目的 |
-|------|---------|------|------|
-| 事件驱动 | 写/删操作成功后立即 | 写后失效 | 语义失效，防止模型用过期内容 |
-| 阈值驱动 | `should_compress()` 返回 True | 按需重读、压缩大型 tool_calls、工作集保留 | 体积压缩，释放上下文空间 |
+| 类型 | 触发条件 | 执行操作 | 目的 |
+|------|---------|---------|------|
+| 写事件驱动 | write_file/delete_file 成功后立即 | `_invalidate_outdated_reads()` | 语义失效，防止模型用过期内容 |
+| 读事件驱动 | read_file 成功后立即 | `_compress_large_results()` | 体积压缩，旧大型读取压缩为元信息 |
+| 阈值驱动 | `should_compress()` 返回 True | `compress_history()`（全部规则） | 体积压缩，释放上下文空间 |
 
 **关键保证**：
 - 事件驱动失效只修改内存中的 `messages`，不触碰 Workspace
 - 阈值驱动压缩发生在下一轮开始前
 - 当前轮的 `response["tool_calls"]` 已经提取完毕，独立存储
-- 两类压缩都不影响当前轮的工具执行
+- 三类触发都不影响当前轮的工具执行
 
 #### 4.5.5 幂等性保证
 
