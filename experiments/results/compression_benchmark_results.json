@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-09-02 19:29:03",
+  "results": [
+    {
+      "scenario": "文件读写密集型",
+      "original_count": 32,
+      "original_size": 32000,
+      "compressed_count": 32,
+      "compressed_size": 11132,
+      "count_reduction_percent": 0.0,
+      "size_reduction_percent": 65.21249999999999,
+      "compression_time_ms": 0.0,
+      "invalidated_reads": 5,
+      "compressed_reads": 5
+    },
+    {
+      "scenario": "命令执行密集型",
+      "original_count": 32,
+      "original_size": 10383,
+      "compressed_count": 32,
+      "compressed_size": 10383,
+      "count_reduction_percent": 0.0,
+      "size_reduction_percent": 0.0,
+      "compression_time_ms": 1.0323524475097656,
+      "invalidated_reads": 0,
+      "compressed_reads": 0
+    },
+    {
+      "scenario": "混合型任务",
+      "original_count": 50,
+      "original_size": 34140,
+      "compressed_count": 50,
+      "compressed_size": 15261,
+      "count_reduction_percent": 0.0,
+      "size_reduction_percent": 55.298769771529,
+      "compression_time_ms": 0.0,
+      "invalidated_reads": 7,
+      "compressed_reads": 0
+    },
+    {
+      "scenario": "长对话任务 (50轮)",
+      "original_count": 102,
+      "original_size": 43111,
+      "compressed_count": 102,
+      "compressed_size": 33995,
+      "count_reduction_percent": 0.0,
+      "size_reduction_percent": 21.14541532323537,
+      "compression_time_ms": 0.0,
+      "invalidated_reads": 0,
+      "compressed_reads": 16
+    }
+  ],
+  "summary": {
+    "avg_size_reduction_percent": 35.41417127369109,
+    "avg_compression_time_ms": 0.2580881118774414
+  }
+}
