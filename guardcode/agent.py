@@ -316,13 +316,32 @@ def run_agent_loop(
         # 将 assistant 回复加入消息历史
         messages.append(_format_assistant_message(response))
 
-        # 检查是否有工具调用
-        if not response["tool_calls"]:
-            _print_verbose("No tool calls, task completed.", config)
-            _log("Task completed. No more tool calls.")
-            final_content = response["content"] or "Task completed."
-            print_final_response(final_content)
-            return final_content
+        # 检查终止条件：基于 finish_reason 和工具调用
+        finish_reason = response.get("finish_reason", "")
+        has_tool_calls = bool(response["tool_calls"])
+
+        if not has_tool_calls:
+            if finish_reason == "stop" or not finish_reason:
+                # 正常完成：模型返回 stop 信号
+                _print_verbose("Model returned finish_reason=stop, task completed.", config)
+                _log("Task completed. Model returned finish_reason=stop.")
+                final_content = response["content"] or "Task completed."
+                print_final_response(final_content)
+                return final_content
+            elif finish_reason == "length":
+                # 达到 token 限制，输出被截断
+                _print_verbose("Model hit token limit (finish_reason=length).", config)
+                _log("Task ended: model hit token limit (finish_reason=length). Output may be truncated.", "warning")
+                final_content = response["content"] or "Task completed (output may be truncated)."
+                print_final_response(final_content)
+                return final_content
+            else:
+                # 其他终止原因（content_filter 等）
+                _print_verbose(f"Task ended with finish_reason={finish_reason}.", config)
+                _log(f"Task ended with finish_reason={finish_reason}.")
+                final_content = response["content"] or "Task completed."
+                print_final_response(final_content)
+                return final_content
 
         # 循环检测：连续两轮工具调用完全相同 → 可能陷入死循环
         current_tool_calls = [

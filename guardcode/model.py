@@ -89,6 +89,92 @@ def call_model(
     }
 
 
+def call_model_stream(
+    messages: list[dict[str, Any]],
+    model_name: str | None = None,
+    api_key: str | None = None,
+    api_base: str | None = None,
+):
+    """流式调用 OpenAI-compatible Chat Completions。
+
+    生成器，逐块 yield 内容片段。
+
+    Yields:
+        {"type": "content", "content": "..."} — 文本内容片段
+        {"type": "tool_calls", "tool_calls": [...]} — 完整的工具调用（在流结束时一次性返回）
+        {"type": "done", "finish_reason": "..."} — 流结束
+    """
+    resolved_api_key = _resolve_setting(api_key, "OPENAI_API_KEY")
+    if not resolved_api_key:
+        raise ValueError("OPENAI_API_KEY is required to call the model")
+
+    resolved_api_base = _resolve_setting(api_base, "OPENAI_API_BASE", DEFAULT_API_BASE)
+    resolved_model = _resolve_setting(model_name, "GUARDCODE_MODEL", DEFAULT_MODEL)
+
+    client = OpenAI(api_key=resolved_api_key, base_url=resolved_api_base)
+
+    # 收集工具调用的增量数据
+    tool_calls_accum: dict[int, dict] = {}
+
+    response = client.chat.completions.create(
+        model=resolved_model,
+        messages=messages,
+        tools=get_tool_schemas(),
+        stream=True,
+    )
+
+    for chunk in response:
+        if not chunk.choices:
+            continue
+
+        delta = chunk.choices[0].delta
+        finish_reason = chunk.choices[0].finish_reason
+
+        # 文本内容
+        if delta and delta.content:
+            yield {"type": "content", "content": delta.content}
+
+        # 工具调用增量
+        if delta and delta.tool_calls:
+            for tc in delta.tool_calls:
+                idx = tc.index
+                if idx not in tool_calls_accum:
+                    tool_calls_accum[idx] = {
+                        "id": tc.id or "",
+                        "name": "",
+                        "arguments": "",
+                    }
+                if tc.id:
+                    tool_calls_accum[idx]["id"] = tc.id
+                if tc.function:
+                    if tc.function.name:
+                        tool_calls_accum[idx]["name"] = tc.function.name
+                    if tc.function.arguments:
+                        tool_calls_accum[idx]["arguments"] += tc.function.arguments
+
+        if finish_reason:
+            # 解析完整的工具调用
+            parsed_tool_calls = []
+            for idx in sorted(tool_calls_accum.keys()):
+                tc = tool_calls_accum[idx]
+                try:
+                    args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                except json.JSONDecodeError:
+                    args = {}
+                parsed_tool_calls.append({
+                    "id": tc["id"],
+                    "name": tc["name"],
+                    "arguments": args,
+                })
+
+            yield {
+                "type": "done",
+                "finish_reason": finish_reason,
+                "content": None,
+                "tool_calls": parsed_tool_calls,
+            }
+
+
 def call_model_with_retry(
     messages: list[dict[str, Any]],
     model_name: str | None = None,
