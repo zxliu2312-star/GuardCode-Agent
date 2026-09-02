@@ -43,7 +43,7 @@ Web 界面支持按工作区分类管理任务，支持列表视图和分组视�
 
 开发流程参考暑期学校学习的 Superpowers，先用 brainstorm 功能落地详细设计文档（SPEC.md），然后按 task 逐步开发。工具和模板由 AI 完成，核心逻辑（如 agent 循环）由我写出想法框架，AI 补充完善。压缩策略是我针对痛点自己设计的（事件驱动 + 阈值驱动混合触发），代码扫描选择轻量方案（若工程需要可引入 CodeQL、Semgrep 等成熟工具）。
 
-过程中对架构有多次调整，对 AI 建议也有反驳和新的讨论（详见 docs/review_log.md，含答辩要点速查）。前端设计受 TRAE 启发。完整 brainstorm 过程见 docs/brainstormProcess.md。
+过程中对架构有多次调整，对 AI 建议也有反驳和新的讨论（详见 review_log.md）。前端设计受 TRAE 启发。完整 brainstorm 过程见 docs/brainstormProcess.md。
 
 四、技术亮点
 
