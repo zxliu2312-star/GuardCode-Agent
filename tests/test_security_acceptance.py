@@ -267,7 +267,7 @@ class TestAgentLoopSecurity:
             "finish_reason": "stop",
         }
 
-        with patch('guardcode.agent.call_model', side_effect=[mock_response, mock_final]):
+        with patch('guardcode.agent.call_model_with_retry', side_effect=[mock_response, mock_final]):
             with patch('guardcode.agent.init_workspace'):
                 result = run_agent_loop("delete temp files", config=config, max_iterations=5)
 
@@ -295,7 +295,7 @@ class TestAgentLoopSecurity:
             "finish_reason": "stop",
         }
 
-        with patch('guardcode.agent.call_model', side_effect=[mock_response, mock_final]):
+        with patch('guardcode.agent.call_model_with_retry', side_effect=[mock_response, mock_final]):
             with patch('guardcode.agent.init_workspace'):
                 result = run_agent_loop("write eval script", config=config, max_iterations=5)
 
