@@ -367,19 +367,19 @@
 ## 单元测试（贯穿各 Phase）
 
 ### 工具测试
-- [ ] `tests/test_file_tools.py`
-  - [ ] 测试 `read_file`：正常读取、文件不存在、路径逃逸
-  - [ ] 测试 `write_file`：正常写入、创建父目录、路径逃逸
-  - [ ] 测试 `list_files`：正常列出、目录不存在、路径逃逸
-  - [ ] 测试 `delete_file`：正常删除、文件不存在、路径逃逸
-- [ ] `tests/test_command_tools.py`
-  - [ ] 测试 `run_command`：正常执行、命令失败、超时
+- [x] `tests/test_file_tools.py`
+  - [x] 测试 `read_file`：正常读取、文件不存在、路径逃逸
+  - [x] 测试 `write_file`：正常写入、创建父目录、路径逃逸
+  - [x] 测试 `list_files`：正常列出、目录不存在、路径逃逸
+  - [x] 测试 `delete_file`：正常删除、文件不存在、路径逃逸
+- [x] `tests/test_command_tools.py`
+  - [x] 测试 `run_command`：正常执行、命令失败、超时
 
 ### 安全测试
-- [ ] `tests/test_security.py`
-  - [ ] 测试 `classify_risk`：各种命令模式匹配
-  - [ ] 测试 `scan_python_code`：各种代码风险模式
-  - [ ] 测试配置规则：always_block、auto_approve
+- [x] `tests/test_security.py`
+  - [x] 测试 `classify_risk`：各种命令模式匹配
+  - [x] 测试 `scan_python_code`：各种代码风险模式
+  - [x] 测试配置规则：always_block、auto_approve
 
 ### 上下文测试
 - [x] `tests/test_context_compressor.py`
@@ -400,72 +400,4 @@
   - [x] 最新一轮 read_file 保持完整
   - [x] 循环检测：连续两轮相同工具调用 → 终止
 
----
 
-## 集成测试
-
-### 端到端场景
-- [ ] 场景 1：简单文件操作
-  - [ ] 任务："create a file notes.txt with my TODO list"
-  - [ ] 验证：文件创建成功，内容合理
-- [ ] 场景 2：代码生成
-  - [ ] 任务："implement bubble sort in Python in sort.py"
-  - [ ] 验证：代码正确，格式规范
-- [ ] 场景 3：测试驱动修复
-  - [ ] 准备：有 bug 的代码 + 失败的测试
-  - [ ] 任务："fix the bugs in calculator.py"
-  - [ ] 验证：代码修复，测试通过
-- [ ] 场景 4：危险操作
-  - [ ] 任务："delete all temporary files"
-  - [ ] 验证：触发确认提示
-- [ ] 场景 5：代码风险
-  - [ ] 任务："write a script that dynamically evaluates code"
-  - [ ] 验证：触发风险警告
-
----
-
-## 交付前检查
-
-### 代码质量
-- [ ] 运行代码格式化工具（black 或 ruff）
-- [ ] 运行 linter（flake8 或 ruff）
-- [ ] 运行类型检查（mypy，可选）
-- [ ] 所有单元测试通过
-- [ ] 所有集成测试通过
-
-### 文档完整性
-- [ ] README.md 包含所有必要信息
-- [ ] docs/SPEC.md 完整
-- [ ] docs/PLAN.md 完整
-- [ ] docs/TASKS.md 完整
-- [ ] 代码中关键函数有 docstring
-
-### 配置和环境
-- [ ] requirements.txt 包含所有依赖
-- [ ] .gitignore 覆盖所有临时文件
-- [ ] 示例配置文件 .guardcode.json 正确
-- [ ] 环境变量说明清晰
-
-### 功能验收
-- [ ] 核心 Agent loop 工作正常
-- [ ] 文件操作工具可用
-- [ ] 命令执行工具可用
-- [ ] 风险分级生效
-- [ ] 代码扫描生效
-- [ ] 用户确认流程完整
-- [ ] 上下文压缩工作
-- [ ] Rich 输出美观
-- [ ] 日志记录完整
-- [ ] 错误处理健壮
-
----
-
-## 可选增强（时间充裕时）
-
-- [ ] 会话恢复功能：`guardcode --resume {session_id}`
-- [ ] 代码 diff 预览：修改文件前显示差异
-- [ ] 并行工具执行：独立工具调用可并行
-- [ ] 流式输出：模型响应实时显示
-- [ ] 更多测试：增加边界情况和异常情况的测试
-- [ ] 性能优化：减少不必要的文件读写
-- [ ] 国际化：支持中文输出（可选）

@@ -824,3 +824,366 @@ app.include_router(ws.router, prefix="/api")
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
+
+---
+
+## 9. 工作模式设计
+
+### 9.1 模式概览
+
+| 模式 | 名称 | 自主性 | 可修改文件 | 用户介入 |
+|------|------|--------|-----------|---------|
+| PLAN | 规划模式 | 先规划后自主 | ✅（批准后） | 计划审批（可编辑步骤） |
+| WORK | 工作模式 | 全自主 | ✅ | 危险操作确认 |
+| FEEDBACK | 反馈模式 | 关键点暂停 | ✅ | 关键决策点反馈 |
+| RESEARCH | 研究模式 | 全自主（只读） | ❌ | 无 |
+
+### 9.2 PLAN 模式 — 先规划后执行
+
+**流程**：
+```
+用户提交任务 + 选择 PLAN 模式
+  ↓
+Agent 分析任务，调用 create_plan 工具生成结构化计划
+  计划格式：
+  {
+    "steps": [
+      {"id": 1, "action": "read_file", "target": "auth.py", "purpose": "了解当前实现"},
+      {"id": 2, "action": "write_file", "target": "oauth_handler.py", "purpose": "创建 OAuth 处理器"},
+      {"id": 3, "action": "modify_file", "target": "auth.py", "purpose": "集成 OAuth"},
+      {"id": 4, "action": "write_file", "target": "test_oauth.py", "purpose": "编写测试"},
+      {"id": 5, "action": "run_command", "target": "pytest test_oauth.py", "purpose": "运行测试"}
+    ],
+    "summary": "重构认证模块以支持 OAuth 2.0"
+  }
+  ↓
+WebSocket 推送 plan_created 事件
+  ← { type: "plan_created", plan: { steps: [...], summary: "..." } }
+  ↓
+前端显示计划编辑器
+  用户可以：
+  - ✅ 批准部分步骤（勾选）
+  - ❌ 拒绝部分步骤（取消勾选）
+  - ✏️ 修改步骤内容
+  - ➕ 新增步骤
+  - 🔀 调整步骤顺序（拖拽）
+  - ✅ 整体批准
+  - ❌ 整体拒绝（Agent 重新规划）
+  ↓
+用户提交审批结果
+  → { type: "plan_approved", plan: { steps: [...编辑后的...] } }
+  ↓
+Agent 按批准的计划执行（自动转为 WORK 模式）
+  每完成一步，WebSocket 推送 plan_step_completed 事件
+  ← { type: "plan_step_completed", step_id: 1, status: "completed" }
+```
+
+**技术实现**：
+- 新增 `create_plan` 工具：Agent 调用后，将计划推入事件队列，线程阻塞等待审批结果
+- `AgentSession` 新增 `plan_queue`：用户审批结果通过此队列传回线程
+- 前端新增 `PlanEditor` 组件：展示步骤列表，支持编辑/排序/批准/拒绝
+
+### 9.3 WORK 模式 — 当前模式增强
+
+**流程**：
+```
+用户提交任务 + 选择 WORK 模式
+  ↓
+Agent 自主执行（与当前 run_agent_loop 一致）
+  ↓
+危险操作（delete_file, 危险命令）→ confirm_request → 用户确认
+  ↓
+完成 → done 事件
+```
+
+**增强点**：
+- 进度追踪：WebSocket 推送 `iteration_update` 事件
+- 完成摘要：done 事件包含执行摘要
+
+### 9.4 FEEDBACK 模式 — 关键决策点暂停
+
+**流程**：
+```
+用户提交任务 + 选择 FEEDBACK 模式
+  ↓
+Agent 自主执行只读操作（read_file, list_files）
+  ↓
+遇到关键决策点（write_file / delete_file / run_command 前）
+  ← { type: "feedback_request", tool: "write_file", args: {...}, message: "即将写入 sort.py" }
+  ↓
+前端显示反馈选项
+  用户选择：
+  - ✅ 继续：Agent 执行此操作
+  - ✏️ 调整：用户输入反馈文字，Agent 根据反馈调整
+  - ⏹️ 停止：Agent 停止执行
+  ↓
+  → { type: "feedback_response", action: "continue" | "adjust" | "stop", feedback: "可选反馈文字" }
+  ↓
+Agent 根据反馈继续或停止
+```
+
+**关键决策点定义**：
+- `write_file`：写入文件前
+- `delete_file`：删除文件前
+- `run_command`：执行命令前（所有命令，不仅限于危险命令）
+
+**技术实现**：
+- Monkey-patch `execute_tool`：在执行写操作前，检查模式是否为 FEEDBACK
+- 如果是，推入 `feedback_request` 事件，线程阻塞等待 `feedback_response`
+
+### 9.5 RESEARCH 模式 — 只读调查
+
+**流程**：
+```
+用户提交任务 + 选择 RESEARCH 模式
+  ↓
+Agent 只能使用只读工具：
+  ✅ read_file, list_files
+  ❌ write_file, delete_file, run_command（从工具列表中移除）
+  ↓
+Agent 自主调查，输出分析结果
+  ← { type: "done", content: "研究报告内容..." }
+```
+
+**技术实现**：
+- 过滤 `get_tool_schemas()` 返回值，移除写操作工具
+- Agent 的 system prompt 追加研究模式指令
+- Agent loop 正常运行，但无法调用写操作工具
+
+### 9.6 模式切换
+
+- 创建任务时选择模式
+- PLAN 模式：计划批准后自动转为 WORK 模式执行
+- 其他模式：执行过程中不可切换
+- WebSocket 事件：`mode_changed`（PLAN → WORK 自动切换时推送）
+
+### 9.7 WebSocket 事件扩展（工作模式）
+
+**Server → Client 新增事件**：
+
+```typescript
+// PLAN 模式：计划已创建
+{
+  type: "plan_created",
+  plan: {
+    steps: [
+      { id: 1, action: "read_file", target: "auth.py", purpose: "了解当前实现" },
+      { id: 2, action: "write_file", target: "oauth.py", purpose: "创建 OAuth 处理器" }
+    ],
+    summary: "重构认证模块以支持 OAuth"
+  },
+  timestamp: "..."
+}
+
+// PLAN 模式：步骤完成
+{
+  type: "plan_step_completed",
+  step_id: 1,
+  status: "completed" | "failed" | "skipped",
+  timestamp: "..."
+}
+
+// FEEDBACK 模式：关键决策点暂停
+{
+  type: "feedback_request",
+  request_id: "fr-123",
+  tool: "write_file",
+  args: { path: "sort.py", content: "..." },
+  message: "即将写入文件 sort.py",
+  timestamp: "..."
+}
+
+// 模式切换通知
+{
+  type: "mode_changed",
+  from: "PLAN",
+  to: "WORK",
+  timestamp: "..."
+}
+
+// WORK 模式：进度更新
+{
+  type: "iteration_update",
+  iteration: 3,
+  max_iterations: 50,
+  timestamp: "..."
+}
+```
+
+**Client → Server 新增事件**：
+
+```typescript
+// PLAN 模式：用户审批计划
+{
+  type: "plan_approved",
+  plan: {
+    steps: [
+      { id: 1, action: "read_file", target: "auth.py", purpose: "了解当前实现", approved: true },
+      { id: 2, action: "write_file", target: "oauth.py", purpose: "创建 OAuth 处理器", approved: true, modified: true }
+    ]
+  }
+}
+
+// PLAN 模式：用户拒绝计划（Agent 重新规划）
+{
+  type: "plan_rejected",
+  feedback: "计划中缺少测试步骤"  // 可选反馈
+}
+
+// FEEDBACK 模式：用户反馈
+{
+  type: "feedback_response",
+  request_id: "fr-123",
+  action: "continue" | "adjust" | "stop",
+  feedback: "可选反馈文字"
+}
+```
+
+---
+
+## 10. TRAE 配色方案
+
+### 10.1 三套主题
+
+| 主题 | 适用场景 | 主背景 | 主前景 |
+|------|---------|--------|--------|
+| Dark | 深色主题（默认） | `#1a1a2e` | `#e4e4ef` |
+| Light | 浅色主题 | `#ffffff` | `#1a1a2e` |
+| Medium | 中等主题 | `#2d2d44` | `#d4d4e8` |
+
+### 10.2 CSS 变量定义
+
+```css
+/* Dark Theme (默认) */
+:root[data-theme="dark"] {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16162a;
+  --bg-tertiary: #20203a;
+  --bg-hover: #2a2a4a;
+  --bg-active: #33335a;
+  --text-primary: #e4e4ef;
+  --text-secondary: #a0a0b8;
+  --text-muted: #6b6b8a;
+  --border: #2a2a4a;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --danger: #dc2626;
+}
+
+/* Light Theme */
+:root[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f8;
+  --bg-tertiary: #ebebf0;
+  --bg-hover: #e0e0e8;
+  --bg-active: #d0d0e0;
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a4a6a;
+  --text-muted: #8a8aa8;
+  --border: #d0d0e0;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --success: #16a34a;
+  --warning: #d97706;
+  --error: #dc2626;
+  --danger: #b91c1c;
+}
+
+/* Medium Theme */
+:root[data-theme="medium"] {
+  --bg-primary: #2d2d44;
+  --bg-secondary: #252538;
+  --bg-tertiary: #353550;
+  --bg-hover: #3d3d60;
+  --bg-active: #454570;
+  --text-primary: #d4d4e8;
+  --text-secondary: #a0a0c0;
+  --text-muted: #7070a0;
+  --border: #3d3d60;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --error: #f87171;
+  --danger: #ef4444;
+}
+```
+
+### 10.3 后期自定义配色
+
+- 前端提供主题编辑器（设置页面）
+- 用户可修改 CSS 变量值
+- 保存到 localStorage
+- 支持导入/导出主题配置（JSON）
+
+---
+
+## 11. 侧边栏设计
+
+### 11.1 布局
+
+```
+┌──────────────────┐
+│ [Work ▾]  [+新建] │  ← 模式选择器 + 新建任务按钮
+├──────────────────┤
+│ 🔍 搜索任务...    │  ← 搜索框
+│ [☰ 列表] [▦ 分组] │  ← 视图切换
+├──────────────────┤
+│ 📁 my-project     │  ← 工作目录分组
+│   ├ 📝 实现排序    │  ← 任务项
+│   │   └ [+]       │  ← 加号：在此目录新建任务
+│   ├ 📝 修复Bug     │
+│   ├ 📝 重构认证    │
+│   └ [+]           │
+│ 📁 other-project  │
+│   ├ 📝 ...        │
+│   └ [+]           │
+├──────────────────┤
+│ ⚙️ 设置  📖 历史  │  ← 底部操作
+└──────────────────┘
+```
+
+### 11.2 模式选择器
+
+- 左上角下拉菜单，默认显示 "Work"
+- 选项：PLAN / WORK / FEEDBACK / RESEARCH
+- 每个选项带图标和简短描述
+- 选择模式后影响新建任务的执行方式
+
+### 11.3 任务列表
+
+- **视图模式**：
+  - 分组视图（默认）：按工作目录分组
+  - 列表视图：平铺所有任务
+- **搜索**：输入关键字过滤任务名
+- **任务项**：
+  - 任务名称
+  - 工作目录路径
+  - 模式标识（PLAN/WORK/FEEDBACK/RESEARCH）
+  - 状态指示器（进行中/已完成/失败）
+  - 加号按钮：在此工作目录下新建任务
+
+### 11.4 模型选择器
+
+- 对话框右下角
+- 点击展开模型选择面板
+- **内置模型**：
+  - GPT-4 Turbo
+  - GPT-4o
+  - GPT-3.5 Turbo
+  - Claude 3.5 Sonnet（如果 API 支持）
+- **自定义模型**：
+  - 用户可添加自定义模型（名称 + API Base + API Key）
+  - 保存到 localStorage
+  - 支持切换 API 提供商（OpenAI / DeepSeek / 本地模型）
+
+### 11.5 文件上传
+
+- 对话框左下角
+- 点击选择文件或拖拽上传
+- 上传的文件复制到工作区 `.uploads/` 目录
+- 在消息中显示文件引用
+- Agent 可通过 `read_file` 读取上传的文件

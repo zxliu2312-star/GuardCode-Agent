@@ -10,7 +10,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
-dist/
 build/
 
 # Environment and secrets
@@ -30,3 +29,20 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Frontend - Node.js
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Database
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Python project-specific
+.pytest_cache/
+
+# Batch scripts (local helper scripts)
+restart.bat
